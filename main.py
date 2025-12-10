@@ -160,6 +160,7 @@ AI_BLACKLIST_FILE = DATA_DIR / "ai_blacklist.json"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
 RANKCARDS_FILE = DATA_DIR / "rankcards.json"
+CUSTOM_ACHIEVEMENTS_FILE = DATA_DIR / "custom_achievements.json"
 MSK_TZ = timezone(timedelta(hours=3))
 TELEGRAM_BOT_TOKEN = "8235791338:AAGtsqzeV8phGsLu39WLpqgxXIK2rsqc0kc"
 TELEGRAM_CHAT_ID = 8165572851  # например, 123456789
@@ -236,6 +237,7 @@ scheduled_events: dict[str, dict] = {}
 event_manager_roles: set[int] = set()  # ID ролей для менеджеров событий
 achievements_data: dict = {}  # Данные о достижениях пользователей
 rankcards_data: dict = {}  # Настройки карточек ранга пользователей
+custom_achievements: dict = {}  # Кастомные достижения, добавленные через команды
 
 
 def utc_now() -> datetime:
@@ -913,6 +915,34 @@ def load_rankcards() -> dict:
         return {str(k): v for k, v in data.items()}
     except (OSError, json.JSONDecodeError, ValueError):
         return {}
+
+
+def load_custom_achievements() -> dict:
+    """Загружает кастомные достижения"""
+    ensure_storage()
+    try:
+        data = json.loads(CUSTOM_ACHIEVEMENTS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+        return {str(k): v for k, v in data.items()}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def save_custom_achievements():
+    """Сохраняет кастомные достижения"""
+    ensure_storage()
+    try:
+        CUSTOM_ACHIEVEMENTS_FILE.write_text(json.dumps(custom_achievements, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def get_all_achievements() -> dict:
+    """Возвращает все достижения (стандартные + кастомные)"""
+    all_achievements = ACHIEVEMENTS_DEFINITIONS.copy()
+    all_achievements.update(custom_achievements)
+    return all_achievements
 
 
 def load_about_statuses() -> list[str]:
@@ -3184,9 +3214,10 @@ async def add_xp(member: discord.Member, amount: int, xp_type: str):
         try:
             unlocked_new = check_achievements(member)
             if unlocked_new:
+                all_achievements = get_all_achievements()
                 for ach_id in unlocked_new:
-                    if ach_id in ACHIEVEMENTS_DEFINITIONS:
-                        ach = ACHIEVEMENTS_DEFINITIONS[ach_id]
+                    if ach_id in all_achievements:
+                        ach = all_achievements[ach_id]
                         rarity_color = RARITY_COLORS.get(ach["rarity"], 0x5865F2)
                         await send_log_embed(
                             "Новое достижение!",
@@ -5838,16 +5869,17 @@ async def achievements_command(ctx: commands.Context, member: discord.Member | N
     
     embed = discord.Embed(
         title=f"🏆 Достижения {member.display_name}",
-        description=f"Разблокировано: **{len(unlocked_ids)}/{len(ACHIEVEMENTS_DEFINITIONS)}**",
+        description=f"Разблокировано: **{len(unlocked_ids)}/{len(get_all_achievements())}**",
         color=0x5865F2
     )
     
     if unlocked_ids:
         # Группируем по редкости
         by_rarity = {}
+        all_achievements = get_all_achievements()
         for ach_id in unlocked_ids:
-            if ach_id in ACHIEVEMENTS_DEFINITIONS:
-                ach = ACHIEVEMENTS_DEFINITIONS[ach_id]
+            if ach_id in all_achievements:
+                ach = all_achievements[ach_id]
                 rarity = ach["rarity"]
                 if rarity not in by_rarity:
                     by_rarity[rarity] = []
@@ -5893,10 +5925,11 @@ async def badges_command(ctx: commands.Context, member: discord.Member | None = 
         ))
         return
     
+    all_achievements = get_all_achievements()
     badges_text = " ".join([
-        ACHIEVEMENTS_DEFINITIONS[ach_id]["emoji"]
+        all_achievements[ach_id]["emoji"]
         for ach_id in unlocked_ids
-        if ach_id in ACHIEVEMENTS_DEFINITIONS
+        if ach_id in all_achievements
     ])
     
     embed = discord.Embed(
@@ -5934,10 +5967,13 @@ async def profile_command(ctx: commands.Context, member: discord.Member | None =
     
     embed.set_thumbnail(url=member.display_avatar.url)
     
+    # Вычисляем количество сообщений
+    messages_count = stats['chat_xp'] // CHAT_XP_PER_MESSAGE if CHAT_XP_PER_MESSAGE > 0 else 0
+    
     # Уровни
     embed.add_field(
         name="💬 Чат",
-        value=f"Уровень: **{chat_level}**\nОпыт: {stats['chat_xp']} XP",
+        value=f"Уровень: **{chat_level}**\nОпыт: {stats['chat_xp']} XP\nСообщений: **{messages_count:,}**",
         inline=True
     )
     embed.add_field(
@@ -5947,7 +5983,7 @@ async def profile_command(ctx: commands.Context, member: discord.Member | None =
     )
     embed.add_field(
         name="🏆 Достижения",
-        value=f"Разблокировано: **{unlocked_count}/{len(ACHIEVEMENTS_DEFINITIONS)}**",
+        value=f"Разблокировано: **{unlocked_count}/{len(get_all_achievements())}**",
         inline=True
     )
     
@@ -5955,12 +5991,23 @@ async def profile_command(ctx: commands.Context, member: discord.Member | None =
     unlocked_ids = user_achievements.get("unlocked", [])
     if unlocked_ids:
         recent_achievements = unlocked_ids[-5:]  # Последние 5
+        all_achievements = get_all_achievements()
         badges_display = " ".join([
-            ACHIEVEMENTS_DEFINITIONS[ach_id]["emoji"]
+            all_achievements[ach_id]["emoji"]
             for ach_id in recent_achievements
-            if ach_id in ACHIEVEMENTS_DEFINITIONS
+            if ach_id in all_achievements
         ])
         embed.add_field(name="Последние бейджи", value=badges_display or "Нет", inline=False)
+    
+    # Дата присоединения к серверу
+    if member.joined_at:
+        joined_date = member.joined_at.astimezone(MSK_TZ)
+        joined_str = joined_date.strftime("%d.%m.%Y")
+        embed.add_field(
+            name="📅 На сервере с",
+            value=joined_str,
+            inline=True
+        )
     
     embed.set_footer(text=f"ID: {member.id}")
     embed.timestamp = utc_now()
@@ -5992,10 +6039,20 @@ async def rankcard_command(ctx: commands.Context, member: discord.Member | None 
     # Получаем настройки карточки
     rankcard_settings = get_user_rankcard(member.id)
     
+    # Преобразуем цвет из hex в int
+    bg_color_str = rankcard_settings.get("background_color", "#5865F2")
+    try:
+        if bg_color_str.startswith("#"):
+            bg_color = int(bg_color_str[1:], 16)
+        else:
+            bg_color = int(bg_color_str.replace("#", ""), 16) if "#" in bg_color_str else 0x5865F2
+    except ValueError:
+        bg_color = 0x5865F2
+    
     # Создаем embed с карточкой ранга
     embed = discord.Embed(
         title=f"📊 Карточка ранга {member.display_name}",
-        color=int(rankcard_settings.get("background_color", "#5865F2").replace("#", ""), 16) if isinstance(rankcard_settings.get("background_color"), str) and rankcard_settings.get("background_color").startswith("#") else 0x5865F2
+        color=bg_color
     )
     
     embed.set_thumbnail(url=member.display_avatar.url)
@@ -6033,10 +6090,11 @@ async def rankcard_command(ctx: commands.Context, member: discord.Member | None 
     
     # Достижения
     user_achievements = get_user_achievements(member.id)
+    all_achievements = get_all_achievements()
     unlocked_count = len(user_achievements.get("unlocked", []))
     embed.add_field(
         name="🏆 Достижения",
-        value=f"Разблокировано: **{unlocked_count}/{len(ACHIEVEMENTS_DEFINITIONS)}**",
+        value=f"Разблокировано: **{unlocked_count}/{len(all_achievements)}**",
         inline=True
     )
     
@@ -6053,8 +6111,399 @@ async def rankcard_command(ctx: commands.Context, member: discord.Member | None 
     except Exception:
         pass
     
-    embed.set_footer(text=f"Используйте !rankcard customize для настройки карточки")
+    embed.set_footer(text=f"Используйте !rankcard-customize для настройки карточки")
     await ctx.send(embed=embed)
+
+
+@bot.command(name="rankcard-customize")
+async def rankcard_customize_command(ctx: commands.Context):
+    """Показывает настройки кастомизации карточки ранга (только для вас)"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    rankcard_settings = get_user_rankcard(ctx.author.id)
+    
+    embed = discord.Embed(
+        title="🎨 Настройки карточки ранга",
+        description="Текущие настройки вашей карточки:",
+        color=0x5865F2
+    )
+    embed.add_field(
+        name="Цвета",
+        value=f"Фон: `{rankcard_settings.get('background_color', '#5865F2')}`\n"
+              f"Текст: `{rankcard_settings.get('text_color', '#FFFFFF')}`\n"
+              f"Прогресс: `{rankcard_settings.get('progress_color', '#57F287')}`",
+        inline=False
+    )
+    embed.add_field(
+        name="Стиль",
+        value=rankcard_settings.get('style', 'default'),
+        inline=True
+    )
+    embed.add_field(
+        name="📝 Команды для изменения",
+        value="`!rankcard-color bg <hex>` - цвет фона\n"
+              "`!rankcard-color text <hex>` - цвет текста\n"
+              "`!rankcard-color progress <hex>` - цвет прогресса\n"
+              "`!rankcard-style <style>` - изменить стиль\n"
+              "`!rankcard-reset` - сбросить настройки",
+        inline=False
+    )
+    embed.set_footer(text="Все изменения применяются только к вашей карточке")
+    await ctx.send(embed=embed, ephemeral=True)
+
+
+@bot.command(name="rankcard-color")
+async def rankcard_color_command(ctx: commands.Context, color_type: str, hex_color: str):
+    """Изменяет цвет карточки ранга (только для вас)
+    
+    Параметры:
+    - color_type: bg (фон), text (текст), progress (прогресс)
+    - hex_color: Цвет в формате hex (#RRGGBB)
+    
+    Примеры:
+    - !rankcard-color bg #FF5733
+    - !rankcard-color text #FFFFFF
+    - !rankcard-color progress #57F287
+    """
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    rankcard_settings = get_user_rankcard(ctx.author.id)
+    color_type = color_type.lower()
+    
+    if color_type not in ["bg", "text", "progress"]:
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            "⚠️ Тип цвета должен быть: `bg`, `text` или `progress`",
+            color=0xED4245
+        ), ephemeral=True)
+        return
+    
+    # Валидация hex цвета
+    if not hex_color.startswith("#"):
+        hex_color = "#" + hex_color
+    
+    if len(hex_color) != 7 or not all(c in "0123456789ABCDEFabcdef" for c in hex_color[1:]):
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            "⚠️ Неверный формат hex цвета. Используйте формат: `#RRGGBB`\n"
+            "Примеры: `#FF5733`, `#5865F2`, `#FFFFFF`",
+            color=0xED4245
+        ), ephemeral=True)
+        return
+    
+    # Сохраняем цвет
+    color_map = {
+        "bg": "background_color",
+        "text": "text_color",
+        "progress": "progress_color"
+    }
+    rankcard_settings[color_map[color_type]] = hex_color.upper()
+    save_rankcards()
+    
+    color_names = {
+        "bg": "фон",
+        "text": "текст",
+        "progress": "прогресс"
+    }
+    
+    await ctx.send(embed=make_embed(
+        "✅ Цвет изменен",
+        f"Цвет {color_names[color_type]} изменен на `{hex_color.upper()}`\n"
+        f"Используйте `!rankcard` чтобы увидеть изменения.",
+        color=0x57F287
+    ), ephemeral=True)
+
+
+@bot.command(name="rankcard-style")
+async def rankcard_style_command(ctx: commands.Context, style: str):
+    """Изменяет стиль карточки ранга (только для вас)
+    
+    Доступные стили: default, minimal, colorful
+    
+    Пример: !rankcard-style colorful
+    """
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    rankcard_settings = get_user_rankcard(ctx.author.id)
+    style = style.lower()
+    valid_styles = ["default", "minimal", "colorful"]
+    
+    if style not in valid_styles:
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            f"⚠️ Неверный стиль. Доступные: {', '.join(valid_styles)}",
+            color=0xED4245
+        ), ephemeral=True)
+        return
+    
+    rankcard_settings["style"] = style
+    save_rankcards()
+    
+    await ctx.send(embed=make_embed(
+        "✅ Стиль изменен",
+        f"Стиль карточки изменен на `{style}`\n"
+        f"Используйте `!rankcard` чтобы увидеть изменения.",
+        color=0x57F287
+    ), ephemeral=True)
+
+
+@bot.command(name="rankcard-reset")
+async def rankcard_reset_command(ctx: commands.Context):
+    """Сбрасывает настройки карточки ранга к значениям по умолчанию (только для вас)"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    rankcard_settings = get_user_rankcard(ctx.author.id)
+    rankcard_settings.clear()
+    rankcard_settings.update({
+        "background_color": "#5865F2",
+        "text_color": "#FFFFFF",
+        "progress_color": "#57F287",
+        "style": "default"
+    })
+    save_rankcards()
+    
+    await ctx.send(embed=make_embed(
+        "✅ Настройки сброшены",
+        "Все настройки карточки ранга сброшены к значениям по умолчанию.",
+        color=0x57F287
+    ), ephemeral=True)
+
+
+@bot.command(name="badadd")
+async def badadd_command(ctx: commands.Context, achievement_id: str, name: str, description: str, emoji: str, rarity: str = "common"):
+    """Добавляет новый кастомный бейдж/достижение
+    
+    Параметры:
+    - achievement_id: Уникальный ID (латинские буквы, цифры, подчеркивания)
+    - name: Название достижения
+    - description: Описание достижения
+    - emoji: Эмодзи для достижения
+    - rarity: Редкость (common, uncommon, rare, epic, legendary, secret) - по умолчанию common
+    
+    Пример: !badadd custom_badge "Особый бейдж" "Описание бейджа" 🎖️ rare
+    """
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    # Проверка прав (только супер-админ)
+    if not is_super_admin(ctx.author):
+        await ctx.send(embed=make_embed(
+            "Нет доступа",
+            "🚫 Только супер-администратор может добавлять новые бейджи.",
+            color=0xED4245
+        ))
+        return
+    
+    # Валидация ID
+    if not achievement_id or not achievement_id.replace("_", "").replace("-", "").isalnum():
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            "⚠️ ID достижения может содержать только латинские буквы, цифры, подчеркивания и дефисы.",
+            color=0xFEE75C
+        ))
+        return
+    
+    achievement_id = achievement_id.lower()
+    
+    # Проверка, не существует ли уже такое достижение
+    all_achievements = get_all_achievements()
+    if achievement_id in all_achievements:
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            f"⚠️ Достижение с ID `{achievement_id}` уже существует!",
+            color=0xFEE75C
+        ))
+        return
+    
+    # Валидация редкости
+    valid_rarities = ["common", "uncommon", "rare", "epic", "legendary", "secret"]
+    rarity = rarity.lower()
+    if rarity not in valid_rarities:
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            f"⚠️ Неверная редкость. Доступные: {', '.join(valid_rarities)}",
+            color=0xFEE75C
+        ))
+        return
+    
+    # Добавляем кастомное достижение
+    custom_achievements[achievement_id] = {
+        "name": name,
+        "description": description,
+        "emoji": emoji,
+        "rarity": rarity,
+        "created_by": ctx.author.id,
+        "created_at": utc_now().isoformat()
+    }
+    save_custom_achievements()
+    
+    embed = discord.Embed(
+        title="✅ Бейдж добавлен",
+        description=f"Новый бейдж `{achievement_id}` успешно создан!",
+        color=RARITY_COLORS.get(rarity, 0x5865F2)
+    )
+    embed.add_field(name="Название", value=f"{emoji} {name}", inline=False)
+    embed.add_field(name="Описание", value=description, inline=False)
+    embed.add_field(name="Редкость", value=rarity.capitalize(), inline=True)
+    embed.add_field(name="ID", value=achievement_id, inline=True)
+    embed.set_footer(text=f"Создано: {ctx.author.display_name}")
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="badremove")
+async def badremove_command(ctx: commands.Context, achievement_id: str):
+    """Удаляет кастомный бейдж/достижение
+    
+    Пример: !badremove custom_badge
+    """
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    if not is_super_admin(ctx.author):
+        await ctx.send(embed=make_embed(
+            "Нет доступа",
+            "🚫 Только супер-администратор может удалять бейджи.",
+            color=0xED4245
+        ))
+        return
+    
+    achievement_id = achievement_id.lower()
+    
+    if achievement_id not in custom_achievements:
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            f"⚠️ Кастомное достижение `{achievement_id}` не найдено!",
+            color=0xFEE75C
+        ))
+        return
+    
+    # Удаляем из кастомных достижений
+    removed = custom_achievements.pop(achievement_id)
+    save_custom_achievements()
+    
+    await ctx.send(embed=make_embed(
+        "✅ Бейдж удален",
+        f"Бейдж `{achievement_id}` ({removed.get('name', 'N/A')}) успешно удален.",
+        color=0x57F287
+    ))
+
+
+@bot.command(name="badlist")
+async def badlist_command(ctx: commands.Context):
+    """Показывает список всех кастомных бейджей"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    if not custom_achievements:
+        await ctx.send(embed=make_embed(
+            "Кастомные бейджи",
+            "Пока нет кастомных бейджей. Используйте `!badadd` для добавления.",
+            color=0xFEE75C
+        ))
+        return
+    
+    embed = discord.Embed(
+        title="📋 Список кастомных бейджей",
+        description=f"Всего: **{len(custom_achievements)}**",
+        color=0x5865F2
+    )
+    
+    # Группируем по редкости
+    by_rarity = {}
+    for ach_id, ach in custom_achievements.items():
+        rarity = ach.get("rarity", "common")
+        if rarity not in by_rarity:
+            by_rarity[rarity] = []
+        by_rarity[rarity].append((ach_id, ach))
+    
+    rarity_order = ["legendary", "epic", "rare", "uncommon", "common", "secret"]
+    for rarity in rarity_order:
+        if rarity in by_rarity:
+            ach_list = by_rarity[rarity]
+            value = "\n".join([
+                f"{ach['emoji']} **{ach['name']}** (`{ach_id}`)"
+                for ach_id, ach in ach_list
+            ])
+            rarity_name = {
+                "common": "Обычные",
+                "uncommon": "Необычные",
+                "rare": "Редкие",
+                "epic": "Эпические",
+                "legendary": "Легендарные",
+                "secret": "Секретные"
+            }.get(rarity, rarity.capitalize())
+            embed.add_field(name=rarity_name, value=value[:1024], inline=False)
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="badgive")
+async def badgive_command(ctx: commands.Context, member: discord.Member, achievement_id: str):
+    """Выдает кастомный бейдж пользователю
+    
+    Пример: !badgive @user custom_badge
+    """
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    if not is_super_admin(ctx.author):
+        await ctx.send(embed=make_embed(
+            "Нет доступа",
+            "🚫 Только супер-администратор может выдавать бейджи.",
+            color=0xED4245
+        ))
+        return
+    
+    achievement_id = achievement_id.lower()
+    all_achievements = get_all_achievements()
+    
+    if achievement_id not in all_achievements:
+        await ctx.send(embed=make_embed(
+            "Ошибка",
+            f"⚠️ Достижение `{achievement_id}` не найдено!",
+            color=0xFEE75C
+        ))
+        return
+    
+    if unlock_achievement(member.id, achievement_id):
+        ach = all_achievements[achievement_id]
+        rarity_color = RARITY_COLORS.get(ach.get("rarity", "common"), 0x5865F2)
+        
+        await ctx.send(embed=make_embed(
+            "✅ Бейдж выдан",
+            f"{member.mention} получил бейдж {ach['emoji']} **{ach['name']}**!",
+            color=rarity_color
+        ))
+        
+        await send_log_embed(
+            "Бейдж выдан",
+            f"{member.mention} получил кастомный бейдж.",
+            color=rarity_color,
+            member=member,
+            fields=[
+                ("Бейдж", f"{ach['emoji']} {ach['name']}"),
+                ("Выдал", ctx.author.mention)
+            ],
+        )
+    else:
+        await ctx.send(embed=make_embed(
+            "Информация",
+            f"ℹ️ {member.mention} уже имеет этот бейдж.",
+            color=0xFEE75C
+        ))
 
 
 @bot.command(name="statusmode")
@@ -6194,13 +6643,12 @@ async def help_command(ctx: commands.Context):
         name="🛡 Модерирование",
         value=(
             "• `!clear <кол-во>` — удалить сообщения в текущем канале.\n"
-            "• `!say <текст>` — отправить сообщение от имени бота.\n"
             "• `!warn @user [причина]` — выдать предупреждение.\n"
             "• `!unwarn @user [номер]` — снять предупреждение.\n"
             "• `!warns` — показать список предупреждений.\n"
-            "• `!mute @user [время] [причина]` — выдать мут (роль Muted).\n"
+            "• `!mute @user [время] [причина]` — выдать мут.\n"
             "• `!unmute @user [причина]` — снять мут.\n"
-            "• `!muteticket @user [время] [причина]` — запретить создавать тикеты.\n"
+            "• `!muteticket @user [время] [причина]` — мут тикетов.\n"
             "• `!unmuteticket @user [причина]` — снять мут тикета.\n"
             "• `!ban @user [время] [причина]` — забанить пользователя.\n"
             "• `!unban <user_id|@user> [причина]` — снять бан.\n"
@@ -6209,26 +6657,28 @@ async def help_command(ctx: commands.Context):
         inline=False,
     )
     embed.add_field(
-        name="ℹ Информация и утилиты",
+        name="❕Информация и утилиты",
         value=(
             "• `!help` — показать этот список.\n"
+            "• `!rankcard` - карточка ранга.\n"
+            "• `!profile` - краткая информация о профиле.\n"
+            "• `!badges` - информация о бейджах пользователя.\n"
             "• `!level [@user]` — показать уровни чата и голоса.\n"
-            "• `!leveltop` — топ чат/voice с листанием страниц.\n"
+            "• `!leveltop` — топ чат/voice.\n"
             "• `!ask <вопрос>` — запрос к ИИ.\n"
-        ),
-        inline=False,
+        )
     )
     embed.add_field(
         name="👑 Команды для супер-администраторов",
         value=(
             "• `!setlevel @user <chat|voice> <уровень>` — выдать уровень вручную.\n"
+            "• `!say <текст>` — отправить сообщение от имени бота.\n"
             "• `!setvoice @user <время>` — задать голосовой стаж.\n"
             "• `!statusmode <online|idle|dnd>` — сменить режим присутствия бота.\n"
             "• `!raidmode` / `!raidconfig` — управление защитой от рейда.\n"
             "• `!ticketpanel [#канал]` — развернуть панель тикетов.\n"
-            "• `!eternal-add @user` / `!eternal-remove @user` — управление доступом к eternal.\n"
             "• `!offai` / `!onai` — выключить/включить ИИ.\n"
-            "• `!askpr <приоритет>` / `!askpr-add @user` / `!askpr-remove @user` — приоритетные запросы к ИИ.\n"
+            "• `!askpr <приоритет>` — приоритетные запросы к ИИ.\n"
             "• `!ai-ban @user` / `!ai-unban @user` — управление баном в ИИ.\n"
         ),
         inline=False,
@@ -6236,7 +6686,8 @@ async def help_command(ctx: commands.Context):
     embed.add_field(
         name="📌 Системная информация",
         value=(
-            "• Логи действий ведутся автоматически (сообщения, роли, голосовые).\n"
+            "• Логи действий ведутся автоматически.\n"
+            "• Бот работает 24/7.\n"
         ),
         inline=False,
     )
@@ -6276,6 +6727,7 @@ settings_data = load_settings()
 autorole_ids = set(settings_data.get("autoroles", []))
 achievements_data = load_achievements()
 rankcards_data = load_rankcards()
+custom_achievements = load_custom_achievements()
 
 
 # ==================== АЧИВКИ И БЕЙДЖИ ====================
