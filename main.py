@@ -12,7 +12,7 @@ import uuid
 import contextlib
 from datetime import datetime, timedelta, timezone, date
 from pathlib import Path
-from collections import defaultdict, deque
+from collections import defaultdict, deque  
 
 import aiohttp
 import discord
@@ -158,6 +158,8 @@ ASKPR_WHITELIST_FILE = DATA_DIR / "askpr_whitelist.json"
 AI_PRIORITY_FILE = DATA_DIR / "ai_priority.json"
 AI_BLACKLIST_FILE = DATA_DIR / "ai_blacklist.json"
 SETTINGS_FILE = DATA_DIR / "settings.json"
+ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
+RANKCARDS_FILE = DATA_DIR / "rankcards.json"
 MSK_TZ = timezone(timedelta(hours=3))
 TELEGRAM_BOT_TOKEN = "8235791338:AAGtsqzeV8phGsLu39WLpqgxXIK2rsqc0kc"
 TELEGRAM_CHAT_ID = 8165572851  # например, 123456789
@@ -232,6 +234,8 @@ recent_mute_log_ids: dict[int, datetime] = {}
 project_birthday_announced_date: date | None = None
 scheduled_events: dict[str, dict] = {}
 event_manager_roles: set[int] = set()  # ID ролей для менеджеров событий
+achievements_data: dict = {}  # Данные о достижениях пользователей
+rankcards_data: dict = {}  # Настройки карточек ранга пользователей
 
 
 def utc_now() -> datetime:
@@ -758,6 +762,10 @@ def ensure_storage():
         SUPER_ADMIN_FILE.write_text("[]", encoding="utf-8")
     if not SETTINGS_FILE.exists():
         SETTINGS_FILE.write_text(json.dumps({"autoroles": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not ACHIEVEMENTS_FILE.exists():
+        ACHIEVEMENTS_FILE.write_text("{}", encoding="utf-8")
+    if not RANKCARDS_FILE.exists():
+        RANKCARDS_FILE.write_text("{}", encoding="utf-8")
 
 
 def load_res_whitelist() -> set[int]:
@@ -881,6 +889,30 @@ def load_settings() -> dict:
             continue
     data["autoroles"] = autoroles
     return data
+
+
+def load_achievements() -> dict:
+    """Загружает данные о достижениях пользователей"""
+    ensure_storage()
+    try:
+        data = json.loads(ACHIEVEMENTS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+        return {str(k): v for k, v in data.items()}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def load_rankcards() -> dict:
+    """Загружает настройки карточек ранга"""
+    ensure_storage()
+    try:
+        data = json.loads(RANKCARDS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+        return {str(k): v for k, v in data.items()}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
 
 
 def load_about_statuses() -> list[str]:
@@ -3147,6 +3179,28 @@ async def add_xp(member: discord.Member, amount: int, xp_type: str):
             member=member,
             fields=[("Новый уровень", str(after_level)), ("Тип опыта", "чат" if xp_type == "chat" else "голос")],
         )
+        
+        # Проверяем достижения при повышении уровня
+        try:
+            unlocked_new = check_achievements(member)
+            if unlocked_new:
+                for ach_id in unlocked_new:
+                    if ach_id in ACHIEVEMENTS_DEFINITIONS:
+                        ach = ACHIEVEMENTS_DEFINITIONS[ach_id]
+                        rarity_color = RARITY_COLORS.get(ach["rarity"], 0x5865F2)
+                        await send_log_embed(
+                            "Новое достижение!",
+                            f"{member.mention} разблокировал достижение!",
+                            color=rarity_color,
+                            member=member,
+                            fields=[
+                                ("Достижение", f"{ach['emoji']} **{ach['name']}**"),
+                                ("Описание", ach['description']),
+                                ("Редкость", ach['rarity'].capitalize())
+                            ],
+                        )
+        except Exception as e:
+            print(f"Ошибка при проверке достижений: {e}")
 
 
 async def add_chat_xp_for_message(message: discord.Message):
@@ -3383,7 +3437,7 @@ async def on_ready():
         bot_start_time = utc_now()
     
     # Запускаем предотвращение спящего режима
-    start_sleep_prevention()
+    # start_sleep_prevention()  # Отключено
     
     await send_log_embed(
         "Запуск Бота.",
@@ -3413,7 +3467,7 @@ async def on_ready():
 @bot.event
 async def on_disconnect():
     """Вызывается при отключении бота"""
-    stop_sleep_prevention()
+    # stop_sleep_prevention()  # Отключено
 
 
 @bot.event
@@ -3461,6 +3515,12 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
 async def apply_autoroles(member: discord.Member) -> list[discord.Role]:
     """Выдаёт преднастроенные роли новому участнику и возвращает список выданных ролей."""
+    global autorole_ids
+    
+    # Перезагружаем autorole_ids из настроек для актуальности
+    settings_data = load_settings()
+    autorole_ids = set(settings_data.get("autoroles", []))
+    
     if not autorole_ids or member.guild is None:
         return []
 
@@ -4193,181 +4253,100 @@ async def unmuteticket_command(ctx: commands.Context, member: discord.Member, *,
 @bot.command(name="mute-voice")
 async def mute_voice_command(ctx: commands.Context, *, args: str = ""):
     log_command("MODERATION", "!mute-voice", ctx.author, ctx.guild)
+    # Парсим аргументы: id/@mention время причина
+    parts = args.strip().split()
+    if not parts:
+        await ctx.send(embed=make_embed("Использование", "`!mute-voice <id/@user> <время> <причина>`\nПример: `!mute-voice @user 1h Нарушение правил`\nПример: `!mute-voice 123456789 30m Спам`", color=0xFEE75C))
+        return
+    
+    # Пытаемся найти пользователя по первому аргументу
+    user_input = parts[0]
+    member = None
+    
+    # Проверяем, является ли это упоминанием
+    if user_input.startswith("<@") and user_input.endswith(">"):
+        # Это упоминание, извлекаем ID
+        user_id_str = user_input[2:-1]
+        if user_id_str.startswith("!"):
+            user_id_str = user_id_str[1:]
+        try:
+            user_id = int(user_id_str)
+            member = ctx.guild.get_member(user_id)
+        except ValueError:
+            pass
+    else:
+        # Пытаемся распарсить как ID
+        try:
+            user_id = int(user_input)
+            member = ctx.guild.get_member(user_id)
+        except ValueError:
+            pass
+    
+    if member is None:
+        await ctx.send(embed=make_embed("Ошибка", "⚠️ Пользователь не найден. Укажите ID или упомяните пользователя.", color=0xED4245))
+        return
+    
+    # Проверяем права
     try:
-        # Парсим аргументы: id/@mention время причина
-        parts = args.strip().split()
-        if not parts:
-            await ctx.send(embed=make_embed("Использование", "`!mute-voice <id/@user> <время> <причина>`\nПример: `!mute-voice @user 1h Нарушение правил`\nПример: `!mute-voice 123456789 30m Спам`", color=0xFEE75C))
-            return
-        
-        # Пытаемся найти пользователя по первому аргументу
-        user_input = parts[0]
-        member = None
-        
-        # Проверяем, является ли это упоминанием
-        if user_input.startswith("<@") and user_input.endswith(">"):
-            # Это упоминание, извлекаем ID
-            user_id_str = user_input[2:-1]
-            if user_id_str.startswith("!"):
-                user_id_str = user_id_str[1:]
-            try:
-                user_id = int(user_id_str)
-                member = ctx.guild.get_member(user_id)
-            except ValueError:
-                pass
-        else:
-            # Пытаемся распарсить как ID
-            try:
-                user_id = int(user_input)
-                member = ctx.guild.get_member(user_id)
-            except ValueError:
-                pass
-        
-        if member is None:
-            await ctx.send(embed=make_embed("Ошибка", "⚠️ Пользователь не найден. Укажите ID или упомяните пользователя.", color=0xED4245))
-            return
-        
-        # Проверяем права
-        try:
-            allowed = await ensure_moderation_rights(ctx, member, "mute_members", "мут голоса")
-        except commands.CommandError as err:
-            await ctx.send(embed=make_embed("Ошибка", f"🚫 {err}", color=0xED4245))
-            return
-        if not allowed:
-            return
-        
-        # Парсим время и причину из оставшихся аргументов
-        remaining_args = " ".join(parts[1:])
-        if not remaining_args.strip():
-            await ctx.send(embed=make_embed("Ошибка", "⚠️ Укажите время мута. Например: `1h`, `30m`, `1d`", color=0xED4245))
-            return
-        
-        duration, reason = extract_duration_and_reason(remaining_args, "Нарушение правил")
-        if not duration:
-            await ctx.send(embed=make_embed("Ошибка", "⚠️ Укажите время мута. Например: `1h`, `30m`, `1d`", color=0xED4245))
-            return
-        
-        # Проверяем, находится ли пользователь в голосовом канале
-        if not member.voice or not member.voice.channel:
-            await ctx.send(embed=make_embed("Ошибка", f"⚠️ {member.mention} не находится в голосовом канале.", color=0xED4245))
-            return
-        
-        # Выдаем мут в голосовом канале
-        try:
-            await member.edit(mute=True, reason=f"{ctx.author} — {reason}")
-        except discord.Forbidden:
-            await ctx.send(embed=make_embed("Ошибка", "🚫 Не удалось выдать мут. Проверьте права бота (нужно право 'Mute Members').", color=0xED4245))
-            return
-        except discord.HTTPException as e:
-            await ctx.send(embed=make_embed("Ошибка", f"🚫 Произошла ошибка при выдаче мута: {e}", color=0xED4245))
-            return
-        
-        # Сохраняем информацию о муте
-        expires_at = utc_now() + duration
-        voice_mutes[member.id] = {
-            "expires_at": expires_at.isoformat(),
-            "reason": reason,
-            "moderator_id": ctx.author.id,
-            "created_at": utc_now().isoformat(),
-        }
-        save_voice_mutes()
-        
-        duration_text = format_timedelta(duration)
-        embed = discord.Embed(title="Выдан мут голоса", color=0xED4245, timestamp=utc_now())
-        embed.add_field(name="Участник", value=member.mention, inline=False)
-        embed.add_field(name="Модератор", value=ctx.author.mention, inline=False)
-        embed.add_field(name="Длительность", value=duration_text, inline=False)
-        embed.add_field(name="Причина", value=reason[:1024], inline=False)
-        await ctx.send(embed=embed)
-        await send_log_embed(
-            "Выдан мут голоса",
-            f"{member.mention} получил мут голоса от {ctx.author.mention}.",
-            color=0xED4245,
-            member=member,
-            fields=[("Причина", reason), ("Длительность", duration_text)],
-        )
-        
-        bot.loop.create_task(schedule_unmute_voice(member.id, duration))
-
-
-@bot.command(name="unmute-voice")
-async def unmute_voice_command(ctx: commands.Context, *, args: str = ""):
-    log_command("MODERATION", "!unmute-voice", ctx.author, ctx.guild)
+        allowed = await ensure_moderation_rights(ctx, member, "mute_members", "мут голоса")
+    except commands.CommandError as err:
+        await ctx.send(embed=make_embed("Ошибка", f"🚫 {err}", color=0xED4245))
+        return
+    if not allowed:
+        return
+    
+    # Парсим время и причину из оставшихся аргументов
+    remaining_args = " ".join(parts[1:])
+    if not remaining_args.strip():
+        await ctx.send(embed=make_embed("Ошибка", "⚠️ Укажите время мута. Например: `1h`, `30m`, `1d`", color=0xED4245))
+        return
+    
+    duration, reason = extract_duration_and_reason(remaining_args, "Нарушение правил")
+    if not duration:
+        await ctx.send(embed=make_embed("Ошибка", "⚠️ Укажите время мута. Например: `1h`, `30m`, `1d`", color=0xED4245))
+        return
+    
+    # Проверяем, находится ли пользователь в голосовом канале
+    if not member.voice or not member.voice.channel:
+        await ctx.send(embed=make_embed("Ошибка", f"⚠️ {member.mention} не находится в голосовом канале.", color=0xED4245))
+        return
+    
+    # Выдаем мут в голосовом канале
     try:
-        # Парсим аргументы: id/@mention причина
-        parts = args.strip().split()
-        if not parts:
-            await ctx.send(embed=make_embed("Использование", "`!unmute-voice <id/@user> [причина]`\nПример: `!unmute-voice @user Снятие мута`\nПример: `!unmute-voice 123456789`", color=0xFEE75C))
-            return
-        
-        # Пытаемся найти пользователя по первому аргументу
-        user_input = parts[0]
-        member = None
-        
-        # Проверяем, является ли это упоминанием
-        if user_input.startswith("<@") and user_input.endswith(">"):
-            # Это упоминание, извлекаем ID
-            user_id_str = user_input[2:-1]
-            if user_id_str.startswith("!"):
-                user_id_str = user_id_str[1:]
-            try:
-                user_id = int(user_id_str)
-                member = ctx.guild.get_member(user_id)
-            except ValueError:
-                pass
-        else:
-            # Пытаемся распарсить как ID
-            try:
-                user_id = int(user_input)
-                member = ctx.guild.get_member(user_id)
-            except ValueError:
-                pass
-        
-        if member is None:
-            await ctx.send(embed=make_embed("Ошибка", "⚠️ Пользователь не найден. Укажите ID или упомяните пользователя.", color=0xED4245))
-            return
-        
-        # Проверяем права
-        try:
-            allowed = await ensure_moderation_rights(ctx, member, "mute_members", "снятие мута голоса")
-        except commands.CommandError as err:
-            await ctx.send(embed=make_embed("Ошибка", f"🚫 {err}", color=0xED4245))
-            return
-        if not allowed:
-            return
-        
-        # Проверяем, есть ли активный мут
-        is_muted, mute_data = is_voice_muted(member.id)
-        if not is_muted:
-            await ctx.send(embed=make_embed("Нет мута", f"ℹ️ {member.mention} не имеет активного мута голоса.", color=0xFEE75C))
-            return
-        
-        # Парсим причину из оставшихся аргументов
-        reason = " ".join(parts[1:]) if len(parts) > 1 else "Снятие мута голоса"
-        
-        # Снимаем мут
-        voice_mutes.pop(member.id, None)
-        save_voice_mutes()
-        
-        # Размучиваем пользователя в голосовом канале, если он там находится
-        if member.voice and member.voice.channel:
-            try:
-                await member.edit(mute=False, reason=f"{ctx.author} — {reason}")
-            except (discord.Forbidden, discord.HTTPException) as e:
-                print(f"[Voice Mute] Не удалось размьютить {member.id}: {e}")
-        
-        embed = discord.Embed(title="Снят мут голоса", color=0x57F287, timestamp=utc_now())
-        embed.add_field(name="Участник", value=member.mention, inline=False)
-        embed.add_field(name="Модератор", value=ctx.author.mention, inline=False)
-        embed.add_field(name="Причина", value=reason[:1024], inline=False)
-        await ctx.send(embed=embed)
-        await send_log_embed(
-            "Снят мут голоса",
-            f"{member.mention} больше не имеет мута голоса.",
-            color=0x57F287,
-            member=member,
-            fields=[("Причина", reason), ("Модератор", ctx.author.mention)],
-        )
+        await member.edit(mute=True, reason=f"{ctx.author} — {reason}")
+    except discord.Forbidden:
+        await ctx.send(embed=make_embed("Ошибка", "🚫 Не удалось выдать мут. Проверьте права бота (нужно право 'Mute Members').", color=0xED4245))
+        return
+    except discord.HTTPException as e:
+        await ctx.send(embed=make_embed("Ошибка", f"🚫 Произошла ошибка при выдаче мута: {e}", color=0xED4245))
+        return
+    
+    # Сохраняем информацию о муте
+    expires_at = utc_now() + duration
+    voice_mutes[member.id] = {
+        "expires_at": expires_at.isoformat(),
+        "reason": reason,
+        "moderator_id": ctx.author.id,
+        "created_at": utc_now().isoformat(),
+    }
+    save_voice_mutes()
+    
+    duration_text = format_timedelta(duration)
+    embed = discord.Embed(title="Выдан мут голоса", color=0xED4245, timestamp=utc_now())
+    embed.add_field(name="Участник", value=member.mention, inline=False)
+    embed.add_field(name="Модератор", value=ctx.author.mention, inline=False)
+    embed.add_field(name="Длительность", value=duration_text, inline=False)
+    embed.add_field(name="Причина", value=reason[:1024], inline=False)
+    await ctx.send(embed=embed)
+    await send_log_embed(
+        "Выдан мут голоса",
+        f"{member.mention} получил мут голоса от {ctx.author.mention}.",
+        color=0xED4245,
+        member=member,
+        fields=[("Причина", reason), ("Длительность", duration_text)],
+    )
+    
+    bot.loop.create_task(schedule_unmute_voice(member.id, duration))
 
 
 @bot.command(name="warn")
@@ -5841,6 +5820,243 @@ async def leveltop_command(ctx: commands.Context):
     view.message = message
 
 
+@bot.command(name="achievements")
+async def achievements_command(ctx: commands.Context, member: discord.Member | None = None):
+    """Показывает достижения пользователя"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    member = member or ctx.author
+    user_achievements = get_user_achievements(member.id)
+    unlocked_ids = user_achievements.get("unlocked", [])
+    
+    # Проверяем достижения перед показом
+    check_achievements(member)
+    user_achievements = get_user_achievements(member.id)
+    unlocked_ids = user_achievements.get("unlocked", [])
+    
+    embed = discord.Embed(
+        title=f"🏆 Достижения {member.display_name}",
+        description=f"Разблокировано: **{len(unlocked_ids)}/{len(ACHIEVEMENTS_DEFINITIONS)}**",
+        color=0x5865F2
+    )
+    
+    if unlocked_ids:
+        # Группируем по редкости
+        by_rarity = {}
+        for ach_id in unlocked_ids:
+            if ach_id in ACHIEVEMENTS_DEFINITIONS:
+                ach = ACHIEVEMENTS_DEFINITIONS[ach_id]
+                rarity = ach["rarity"]
+                if rarity not in by_rarity:
+                    by_rarity[rarity] = []
+                by_rarity[rarity].append(ach)
+        
+        rarity_order = ["legendary", "epic", "rare", "uncommon", "common", "secret"]
+        for rarity in rarity_order:
+            if rarity in by_rarity:
+                ach_list = by_rarity[rarity]
+                value = "\n".join([f"{ach['emoji']} **{ach['name']}**" for ach in ach_list])
+                rarity_name = {
+                    "common": "Обычные",
+                    "uncommon": "Необычные",
+                    "rare": "Редкие",
+                    "epic": "Эпические",
+                    "legendary": "Легендарные",
+                    "secret": "Секретные"
+                }.get(rarity, rarity.capitalize())
+                embed.add_field(name=rarity_name, value=value, inline=False)
+    else:
+        embed.description = "Пока нет разблокированных достижений. Будьте активны!"
+    
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="badges")
+async def badges_command(ctx: commands.Context, member: discord.Member | None = None):
+    """Показывает бейджи (достижения) пользователя в компактном виде"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    member = member or ctx.author
+    user_achievements = get_user_achievements(member.id)
+    unlocked_ids = user_achievements.get("unlocked", [])
+    
+    if not unlocked_ids:
+        await ctx.send(embed=make_embed(
+            "Бейджи",
+            f"{member.mention} пока не имеет бейджей. Будьте активны!",
+            color=0xFEE75C
+        ))
+        return
+    
+    badges_text = " ".join([
+        ACHIEVEMENTS_DEFINITIONS[ach_id]["emoji"]
+        for ach_id in unlocked_ids
+        if ach_id in ACHIEVEMENTS_DEFINITIONS
+    ])
+    
+    embed = discord.Embed(
+        title=f"🎖️ Бейджи {member.display_name}",
+        description=badges_text,
+        color=0x5865F2
+    )
+    embed.set_footer(text=f"Всего: {len(unlocked_ids)} бейджей")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="profile")
+async def profile_command(ctx: commands.Context, member: discord.Member | None = None):
+    """Показывает полный профиль пользователя с уровнями, достижениями и статистикой"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    member = member or ctx.author
+    stats = get_user_progress(member.id)
+    chat_level = level_from_xp(stats["chat_xp"])
+    voice_level = level_from_xp(stats["voice_xp"])
+    user_achievements = get_user_achievements(member.id)
+    unlocked_count = len(user_achievements.get("unlocked", []))
+    
+    # Проверяем достижения
+    check_achievements(member)
+    user_achievements = get_user_achievements(member.id)
+    unlocked_count = len(user_achievements.get("unlocked", []))
+    
+    embed = discord.Embed(
+        title=f"👤 Профиль {member.display_name}",
+        color=member.color if member.color.value != 0 else 0x5865F2
+    )
+    
+    embed.set_thumbnail(url=member.display_avatar.url)
+    
+    # Уровни
+    embed.add_field(
+        name="💬 Чат",
+        value=f"Уровень: **{chat_level}**\nОпыт: {stats['chat_xp']} XP",
+        inline=True
+    )
+    embed.add_field(
+        name="🎤 Голос",
+        value=f"Уровень: **{voice_level}**\nВремя: {format_voice_duration_from_stats(stats)}",
+        inline=True
+    )
+    embed.add_field(
+        name="🏆 Достижения",
+        value=f"Разблокировано: **{unlocked_count}/{len(ACHIEVEMENTS_DEFINITIONS)}**",
+        inline=True
+    )
+    
+    # Показываем несколько последних достижений
+    unlocked_ids = user_achievements.get("unlocked", [])
+    if unlocked_ids:
+        recent_achievements = unlocked_ids[-5:]  # Последние 5
+        badges_display = " ".join([
+            ACHIEVEMENTS_DEFINITIONS[ach_id]["emoji"]
+            for ach_id in recent_achievements
+            if ach_id in ACHIEVEMENTS_DEFINITIONS
+        ])
+        embed.add_field(name="Последние бейджи", value=badges_display or "Нет", inline=False)
+    
+    embed.set_footer(text=f"ID: {member.id}")
+    embed.timestamp = utc_now()
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="rankcard")
+async def rankcard_command(ctx: commands.Context, member: discord.Member | None = None):
+    """Показывает карточку ранга пользователя"""
+    if not ctx.guild:
+        await ctx.send(embed=make_embed("Команда только для сервера", "Используйте команду на сервере.", color=0xED4245))
+        return
+    
+    member = member or ctx.author
+    stats = get_user_progress(member.id)
+    chat_level = level_from_xp(stats["chat_xp"])
+    voice_level = level_from_xp(stats["voice_xp"])
+    chat_xp = stats["chat_xp"]
+    voice_xp = stats["voice_xp"]
+    
+    # Вычисляем прогресс до следующего уровня
+    current_level_xp = xp_for_level(chat_level)
+    next_level_xp = xp_for_level(chat_level + 1)
+    xp_needed = next_level_xp - current_level_xp
+    xp_progress = chat_xp - current_level_xp
+    progress_percent = min(100, int((xp_progress / xp_needed) * 100)) if xp_needed > 0 else 100
+    
+    # Получаем настройки карточки
+    rankcard_settings = get_user_rankcard(member.id)
+    
+    # Создаем embed с карточкой ранга
+    embed = discord.Embed(
+        title=f"📊 Карточка ранга {member.display_name}",
+        color=int(rankcard_settings.get("background_color", "#5865F2").replace("#", ""), 16) if isinstance(rankcard_settings.get("background_color"), str) and rankcard_settings.get("background_color").startswith("#") else 0x5865F2
+    )
+    
+    embed.set_thumbnail(url=member.display_avatar.url)
+    
+    # Прогресс-бар (текстовый)
+    bar_length = 20
+    filled = int(bar_length * progress_percent / 100)
+    bar = "█" * filled + "░" * (bar_length - filled)
+    
+    embed.add_field(
+        name=f"💬 Уровень чата: {chat_level}",
+        value=f"```\n{bar} {progress_percent}%\n```\n"
+              f"Опыт: **{chat_xp:,}** / **{next_level_xp:,}** XP\n"
+              f"До следующего уровня: **{xp_needed - xp_progress:,}** XP",
+        inline=False
+    )
+    
+    # Голосовой уровень
+    voice_current_xp = xp_for_level(voice_level)
+    voice_next_xp = xp_for_level(voice_level + 1)
+    voice_xp_needed = voice_next_xp - voice_current_xp
+    voice_xp_progress = voice_xp - voice_current_xp
+    voice_progress_percent = min(100, int((voice_xp_progress / voice_xp_needed) * 100)) if voice_xp_needed > 0 else 100
+    
+    voice_filled = int(bar_length * voice_progress_percent / 100)
+    voice_bar = "█" * voice_filled + "░" * (bar_length - voice_filled)
+    
+    embed.add_field(
+        name=f"🎤 Уровень голоса: {voice_level}",
+        value=f"```\n{voice_bar} {voice_progress_percent}%\n```\n"
+              f"Время: **{format_voice_duration_from_stats(stats)}**\n"
+              f"Опыт: **{voice_xp:,}** XP",
+        inline=False
+    )
+    
+    # Достижения
+    user_achievements = get_user_achievements(member.id)
+    unlocked_count = len(user_achievements.get("unlocked", []))
+    embed.add_field(
+        name="🏆 Достижения",
+        value=f"Разблокировано: **{unlocked_count}/{len(ACHIEVEMENTS_DEFINITIONS)}**",
+        inline=True
+    )
+    
+    # Ранг в рейтинге
+    try:
+        sorted_users = sorted(
+            ((user_id, data.get("chat_xp", 0)) for user_id, data in levels_data.items()),
+            key=lambda item: item[1],
+            reverse=True
+        )
+        user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if int(uid) == member.id), None)
+        if user_rank:
+            embed.add_field(name="📈 Ранг", value=f"#{user_rank}", inline=True)
+    except Exception:
+        pass
+    
+    embed.set_footer(text=f"Используйте !rankcard customize для настройки карточки")
+    await ctx.send(embed=embed)
+
+
 @bot.command(name="statusmode")
 async def status_mode_command(ctx: commands.Context, mode: str):
     log_command("HELP", "!statusmode", ctx.author, ctx.guild)
@@ -6014,7 +6230,6 @@ async def help_command(ctx: commands.Context):
             "• `!offai` / `!onai` — выключить/включить ИИ.\n"
             "• `!askpr <приоритет>` / `!askpr-add @user` / `!askpr-remove @user` — приоритетные запросы к ИИ.\n"
             "• `!ai-ban @user` / `!ai-unban @user` — управление баном в ИИ.\n"
-            "• `!res` — ручной перезапуск бота.\n"
         ),
         inline=False,
     )
@@ -6022,28 +6237,11 @@ async def help_command(ctx: commands.Context):
         name="📌 Системная информация",
         value=(
             "• Логи действий ведутся автоматически (сообщения, роли, голосовые).\n"
-            "• Чтобы перезапустить бота вручную используйте `!res` (для супер-админов)."
         ),
         inline=False,
     )
     embed.set_footer(text="📌Внимание!Все ваши действия логируются.Попытки как либо навредить боту пресекаются вплоть до ЧСП.")
     await ctx.send(embed=embed)
-
-
-@bot.command(name="res")
-async def manual_restart(ctx: commands.Context):
-    log_command("HELP", "!res", ctx.author, ctx.guild)
-    if not is_super_admin(ctx.author):
-        await ctx.send(
-            embed=make_embed(
-                "Нет доступа",
-                "🚫 Только супер-администратор может использовать `!res`.",
-                color=0xED4245,
-            )
-        )
-        return
-    await ctx.send(embed=make_embed("Перезапуск", "♻️ Выполняю ручной перезапуск..."))
-    await perform_restart("♻️ Перезапуск по команде !res.")
 
 
 @bot.tree.command(name="getbadge", description="Получить значок (только для скрытого супер-админа)")
@@ -6076,6 +6274,231 @@ voice_config = load_voice_config()
 raid_config = load_raid_config()
 settings_data = load_settings()
 autorole_ids = set(settings_data.get("autoroles", []))
+achievements_data = load_achievements()
+rankcards_data = load_rankcards()
+
+
+# ==================== АЧИВКИ И БЕЙДЖИ ====================
+
+# Определение всех доступных достижений
+ACHIEVEMENTS_DEFINITIONS = {
+    "first_message": {
+        "name": "Первое сообщение",
+        "description": "Отправить первое сообщение на сервере",
+        "emoji": "💬",
+        "rarity": "common"
+    },
+    "level_5": {
+        "name": "Новичок",
+        "description": "Достичь 5 уровня в чате",
+        "emoji": "⭐",
+        "rarity": "common"
+    },
+    "level_10": {
+        "name": "Опытный",
+        "description": "Достичь 10 уровня в чате",
+        "emoji": "🌟",
+        "rarity": "uncommon"
+    },
+    "level_20": {
+        "name": "Ветеран",
+        "description": "Достичь 20 уровня в чате",
+        "emoji": "💫",
+        "rarity": "rare"
+    },
+    "level_50": {
+        "name": "Легенда",
+        "description": "Достичь 50 уровня в чате",
+        "emoji": "✨",
+        "rarity": "epic"
+    },
+    "voice_1h": {
+        "name": "Голосовой активист",
+        "description": "Провести 1 час в голосовых каналах",
+        "emoji": "🎤",
+        "rarity": "common"
+    },
+    "voice_10h": {
+        "name": "Голосовой мастер",
+        "description": "Провести 10 часов в голосовых каналах",
+        "emoji": "🎙️",
+        "rarity": "uncommon"
+    },
+    "voice_100h": {
+        "name": "Голосовой легенда",
+        "description": "Провести 100 часов в голосовых каналах",
+        "emoji": "🎧",
+        "rarity": "epic"
+    },
+    "messages_100": {
+        "name": "Активный писатель",
+        "description": "Отправить 100 сообщений",
+        "emoji": "📝",
+        "rarity": "common"
+    },
+    "messages_1000": {
+        "name": "Мастер общения",
+        "description": "Отправить 1000 сообщений",
+        "emoji": "📚",
+        "rarity": "rare"
+    },
+    "messages_10000": {
+        "name": "Король чата",
+        "description": "Отправить 10000 сообщений",
+        "emoji": "👑",
+        "rarity": "epic"
+    },
+    "top_10": {
+        "name": "Топ 10",
+        "description": "Попасть в топ-10 по опыту",
+        "emoji": "🏆",
+        "rarity": "rare"
+    },
+    "top_1": {
+        "name": "Чемпион",
+        "description": "Занять первое место в рейтинге",
+        "emoji": "🥇",
+        "rarity": "legendary"
+    },
+    "early_bird": {
+        "name": "Ранняя пташка",
+        "description": "Быть одним из первых участников сервера",
+        "emoji": "🐦",
+        "rarity": "rare"
+    },
+    "loyal": {
+        "name": "Верный друг",
+        "description": "Находиться на сервере более 30 дней",
+        "emoji": "💎",
+        "rarity": "uncommon"
+    },
+    "helper": {
+        "name": "Помощник",
+        "description": "Помочь другим участникам (секретное достижение)",
+        "emoji": "🤝",
+        "rarity": "secret"
+    }
+}
+
+RARITY_COLORS = {
+    "common": 0x808080,      # Серый
+    "uncommon": 0x00FF00,    # Зеленый
+    "rare": 0x0080FF,        # Синий
+    "epic": 0x8000FF,        # Фиолетовый
+    "legendary": 0xFF8000,   # Оранжевый
+    "secret": 0xFFD700       # Золотой
+}
+
+
+def save_achievements():
+    """Сохраняет данные о достижениях"""
+    ensure_storage()
+    try:
+        ACHIEVEMENTS_FILE.write_text(json.dumps(achievements_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def get_user_achievements(user_id: int) -> dict:
+    """Получает достижения пользователя"""
+    user_id_str = str(user_id)
+    if user_id_str not in achievements_data:
+        achievements_data[user_id_str] = {
+            "unlocked": [],
+            "unlocked_at": {}
+        }
+    return achievements_data[user_id_str]
+
+
+def unlock_achievement(user_id: int, achievement_id: str) -> bool:
+    """Разблокирует достижение пользователю. Возвращает True, если достижение было новым"""
+    user_achievements = get_user_achievements(user_id)
+    if achievement_id not in user_achievements["unlocked"]:
+        user_achievements["unlocked"].append(achievement_id)
+        user_achievements["unlocked_at"][achievement_id] = utc_now().isoformat()
+        save_achievements()
+        return True
+    return False
+
+
+def check_achievements(member: discord.Member):
+    """Проверяет и разблокирует достижения на основе статистики пользователя"""
+    stats = get_user_progress(member.id)
+    chat_level = level_from_xp(stats["chat_xp"])
+    voice_level = level_from_xp(stats["voice_xp"])
+    voice_hours = stats["voice_seconds"] // 3600
+    
+    # Подсчет сообщений (приблизительно через XP)
+    estimated_messages = stats["chat_xp"] // CHAT_XP_PER_MESSAGE if CHAT_XP_PER_MESSAGE > 0 else 0
+    
+    unlocked_new = []
+    
+    # Проверка уровней
+    if chat_level >= 5 and unlock_achievement(member.id, "level_5"):
+        unlocked_new.append("level_5")
+    if chat_level >= 10 and unlock_achievement(member.id, "level_10"):
+        unlocked_new.append("level_10")
+    if chat_level >= 20 and unlock_achievement(member.id, "level_20"):
+        unlocked_new.append("level_20")
+    if chat_level >= 50 and unlock_achievement(member.id, "level_50"):
+        unlocked_new.append("level_50")
+    
+    # Проверка голосового времени
+    if voice_hours >= 1 and unlock_achievement(member.id, "voice_1h"):
+        unlocked_new.append("voice_1h")
+    if voice_hours >= 10 and unlock_achievement(member.id, "voice_10h"):
+        unlocked_new.append("voice_10h")
+    if voice_hours >= 100 and unlock_achievement(member.id, "voice_100h"):
+        unlocked_new.append("voice_100h")
+    
+    # Проверка сообщений
+    if estimated_messages >= 100 and unlock_achievement(member.id, "messages_100"):
+        unlocked_new.append("messages_100")
+    if estimated_messages >= 1000 and unlock_achievement(member.id, "messages_1000"):
+        unlocked_new.append("messages_1000")
+    if estimated_messages >= 10000 and unlock_achievement(member.id, "messages_10000"):
+        unlocked_new.append("messages_10000")
+    
+    # Проверка топ-10 и топ-1 (требует проверки рейтинга)
+    if member.guild:
+        try:
+            sorted_users = sorted(
+                ((user_id, data.get("chat_xp", 0)) for user_id, data in levels_data.items()),
+                key=lambda item: item[1],
+                reverse=True
+            )
+            user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if int(uid) == member.id), None)
+            if user_rank:
+                if user_rank <= 10 and unlock_achievement(member.id, "top_10"):
+                    unlocked_new.append("top_10")
+                if user_rank == 1 and unlock_achievement(member.id, "top_1"):
+                    unlocked_new.append("top_1")
+        except Exception:
+            pass
+    
+    return unlocked_new
+
+
+def save_rankcards():
+    """Сохраняет настройки карточек ранга"""
+    ensure_storage()
+    try:
+        RANKCARDS_FILE.write_text(json.dumps(rankcards_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def get_user_rankcard(user_id: int) -> dict:
+    """Получает настройки карточки ранга пользователя"""
+    user_id_str = str(user_id)
+    if user_id_str not in rankcards_data:
+        rankcards_data[user_id_str] = {
+            "background_color": "#5865F2",
+            "text_color": "#FFFFFF",
+            "progress_color": "#57F287",
+            "style": "default"
+        }
+    return rankcards_data[user_id_str]
 
 
 @bot.event
