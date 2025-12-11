@@ -382,23 +382,23 @@ async def resolve_role_actor(guild: discord.Guild, member: discord.Member, role_
         async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.member_role_update):
             if entry.target.id != member.id:
                 continue
-        created_at = entry.created_at
-    if created_at:
-        if created_at.tzinfo is None:
-            created_dt = created_at.replace(tzinfo=timezone.utc)
-        else:
-            created_dt = created_at.astimezone(timezone.utc)
-        delta = utc_now() - created_dt
-    if delta.total_seconds() > 60:
-        break
+            created_at = entry.created_at
+            if created_at:
+                if created_at.tzinfo is None:
+                    created_dt = created_at.replace(tzinfo=timezone.utc)
+                else:
+                    created_dt = created_at.astimezone(timezone.utc)
+                delta = utc_now() - created_dt
+                if delta.total_seconds() > 60:
+                    break
 
-        before_roles = _role_ids(getattr(getattr(entry.changes, "before", None), "roles", None))
-        after_roles = _role_ids(getattr(getattr(entry.changes, "after", None), "roles", None))
+            before_roles = _role_ids(getattr(getattr(entry.changes, "before", None), "roles", None))
+            after_roles = _role_ids(getattr(getattr(entry.changes, "after", None), "roles", None))
 
-    if action == "add" and role_id in after_roles and role_id not in before_roles:
-        return entry.user
-    if action == "remove" and role_id in before_roles and role_id not in after_roles:
-        return entry.user
+            if action == "add" and role_id in after_roles and role_id not in before_roles:
+                return entry.user
+            if action == "remove" and role_id in before_roles and role_id not in after_roles:
+                return entry.user
 
         return None
 
@@ -412,22 +412,22 @@ async def resolve_nickname_actor(guild: discord.Guild, member: discord.Member) -
         async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.member_update):
             if entry.target.id != member.id:
                 continue
-        created_at = entry.created_at
-    if created_at:
-        if created_at.tzinfo is None:
-            created_dt = created_at.replace(tzinfo=timezone.utc)
-        else:
-            created_dt = created_at.astimezone(timezone.utc)
-        delta = utc_now() - created_dt
-    if delta.total_seconds() > 60:
-        break
+            created_at = entry.created_at
+            if created_at:
+                if created_at.tzinfo is None:
+                    created_dt = created_at.replace(tzinfo=timezone.utc)
+                else:
+                    created_dt = created_at.astimezone(timezone.utc)
+                delta = utc_now() - created_dt
+                if delta.total_seconds() > 60:
+                    break
 
-        changes = entry.changes
-    if changes:
-        before_nick = getattr(changes.before, "nick", None) if hasattr(changes, "before") else None
-        after_nick = getattr(changes.after, "nick", None) if hasattr(changes, "after") else None
-    if before_nick != after_nick:
-        return entry.user
+            changes = entry.changes
+            if changes:
+                before_nick = getattr(changes.before, "nick", None) if hasattr(changes, "before") else None
+                after_nick = getattr(changes.after, "nick", None) if hasattr(changes, "after") else None
+                if before_nick != after_nick:
+                    return entry.user
 
         return None
 
@@ -1035,13 +1035,13 @@ def _voice_seconds_from_stats(stats: dict | None) -> int:
 def parse_voice_duration_input(raw_value: str) -> int | None:
     if not raw_value:
         return None
-        value = raw_value.strip().replace(",", ".")
-        separator = None
+    value = raw_value.strip().replace(",", ".")
+    separator = None
     for sep in (".", ":"):
         if sep in value:
-        separator = sep
-        break
-        parts = value.split(separator) if separator else [value]
+            separator = sep
+            break
+    parts = value.split(separator) if separator else [value]
     if len(parts) > 3:
         return None
     try:
@@ -1050,7 +1050,7 @@ def parse_voice_duration_input(raw_value: str) -> int | None:
         return None
     while len(numbers) < 3:
         numbers.insert(0, 0)
-        hours, minutes, seconds = numbers
+    hours, minutes, seconds = numbers
     if hours < 0 or minutes < 0 or seconds < 0:
         return None
     if minutes >= 60 or seconds >= 60:
@@ -1123,53 +1123,53 @@ def load_voice_config() -> dict:
         data = json.loads(VOICE_CONFIG_FILE.read_text(encoding="utf-8"))
         data.setdefault("generators", [])
         data.setdefault("rooms", {})
-    for generator in data["generators"]:
-        generator.setdefault("blocked_ids", [])
+        for generator in data["generators"]:
+            generator.setdefault("blocked_ids", [])
 
-# Защита: удаляем каналы генераторов из списка комнат
+        # Защита: удаляем каналы генераторов из списка комнат
         generator_channel_ids = {
-        str(gen.get("generator_channel_id"))
-    for gen in data["generators"]
-    if gen.get("generator_channel_id")
+            str(gen.get("generator_channel_id"))
+            for gen in data["generators"]
+            if gen.get("generator_channel_id")
         }
         removed_rooms = []
-    for room_id in list(data["rooms"].keys()):
-        if room_id in generator_channel_ids:
-        removed_rooms.append(room_id)
-        data["rooms"].pop(room_id, None)
-    if removed_rooms:
-        print(f"[Voice] Удалены каналы генераторов из списка комнат: {removed_rooms}")
-# Сохраняем исправленный конфиг
+        for room_id in list(data["rooms"].keys()):
+            if room_id in generator_channel_ids:
+                removed_rooms.append(room_id)
+                data["rooms"].pop(room_id, None)
+        if removed_rooms:
+            print(f"[Voice] Удалены каналы генераторов из списка комнат: {removed_rooms}")
+        # Сохраняем исправленный конфиг
         VOICE_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    for room in data["rooms"].values():
-        room.setdefault("blocked_ids", [])
+        for room in data["rooms"].values():
+            room.setdefault("blocked_ids", [])
         return data
     except (OSError, json.JSONDecodeError):
         return {"generators": [], "rooms": {}}
 
 
 def save_voice_config():
-# КРИТИЧЕСКАЯ ЗАЩИТА: Удаляем генераторы из списка комнат перед сохранением
+    # КРИТИЧЕСКАЯ ЗАЩИТА: Удаляем генераторы из списка комнат перед сохранением
     generator_channel_ids = {
-    gen.get("generator_channel_id")
-    for gen in voice_config.get("generators", [])
-    if gen.get("generator_channel_id")
-        }
-        removed_rooms = []
+        gen.get("generator_channel_id")
+        for gen in voice_config.get("generators", [])
+        if gen.get("generator_channel_id")
+    }
+    removed_rooms = []
     for room_id in list(voice_config.get("rooms", {}).keys()):
         try:
-        room_id_int = int(room_id)
-    if room_id_int in generator_channel_ids:
-        removed_rooms.append(room_id)
-        voice_config["rooms"].pop(room_id, None)
-    except (ValueError, TypeError):
-        continue
+            room_id_int = int(room_id)
+            if room_id_int in generator_channel_ids:
+                removed_rooms.append(room_id)
+                voice_config["rooms"].pop(room_id, None)
+        except (ValueError, TypeError):
+            continue
 
     if removed_rooms:
         print(f"[Voice] КРИТИЧЕСКАЯ ЗАЩИТА: удалены генераторы из списка комнат перед сохранением: {removed_rooms}")
 
-        VOICE_CONFIG_FILE.write_text(json.dumps(voice_config, ensure_ascii=False, indent=2), encoding="utf-8")
+    VOICE_CONFIG_FILE.write_text(json.dumps(voice_config, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_tickets_config() -> dict:
@@ -1182,35 +1182,35 @@ def load_tickets_config() -> dict:
         data.setdefault("log_channel_id", 1437852587981541527)
         data.setdefault("staff_roles", [])
         data.setdefault("tickets", {})
-# Инициализируем счетчик тикетов, если его нет
-    if "next_ticket_id" not in data:
-# Находим максимальный существующий ID или начинаем с 1
-        max_id = 0
-    for ticket_data in data.get("tickets", {}).values():
-        ticket_id_str = ticket_data.get("ticket_id", "")
-# Пытаемся извлечь числовой ID из строки (может быть в формате E1147051 или просто число)
-    try:
-# Если ID начинается с буквы и цифр, извлекаем только цифры
-    if ticket_id_str and ticket_id_str[0].isalpha():
-# Пропускаем первую букву и берем цифры
-        num_part = ''.join(filter(str.isdigit, ticket_id_str))
-    if num_part:
-        max_id = max(max_id, int(num_part))
-    else:
-# Если это просто число
-        max_id = max(max_id, int(ticket_id_str))
-    except (ValueError, TypeError):
-        continue
-        data["next_ticket_id"] = max_id + 1 if max_id > 0 else 1
+        # Инициализируем счетчик тикетов, если его нет
+        if "next_ticket_id" not in data:
+            # Находим максимальный существующий ID или начинаем с 1
+            max_id = 0
+            for ticket_data in data.get("tickets", {}).values():
+                ticket_id_str = ticket_data.get("ticket_id", "")
+                # Пытаемся извлечь числовой ID из строки (может быть в формате E1147051 или просто число)
+                try:
+                    # Если ID начинается с буквы и цифр, извлекаем только цифры
+                    if ticket_id_str and ticket_id_str[0].isalpha():
+                        # Пропускаем первую букву и берем цифры
+                        num_part = ''.join(filter(str.isdigit, ticket_id_str))
+                        if num_part:
+                            max_id = max(max_id, int(num_part))
+                    else:
+                        # Если это просто число
+                        max_id = max(max_id, int(ticket_id_str))
+                except (ValueError, TypeError):
+                    continue
+            data["next_ticket_id"] = max_id + 1 if max_id > 0 else 1
         return data
     except (OSError, json.JSONDecodeError):
         return {
-        "panel_channel_id": 0,
-        "panel_message_id": 0,
-        "category_id": 0,
-        "log_channel_id": 0,
-        "staff_roles": [],
-        "tickets": {}
+            "panel_channel_id": 0,
+            "panel_message_id": 0,
+            "category_id": 0,
+            "log_channel_id": 0,
+            "staff_roles": [],
+            "tickets": {}
         }
 
 
@@ -1246,21 +1246,21 @@ def is_ticket_muted(user_id: int) -> tuple[bool, dict | None]:
         return False, None
 
         expires_at_str = mute_data.get("expires_at")
-    if not expires_at_str:
-        return False, None
+        if not expires_at_str:
+            return False, None
 
-    try:
-        expires_at = datetime.fromisoformat(expires_at_str)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if utc_now() >= expires_at:
-# Мут истек, удаляем
-        ticket_mutes.pop(user_id, None)
-        save_ticket_mutes()
-        return False, None
-        return True, mute_data
-    except (ValueError, TypeError):
-        return False, None
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if utc_now() >= expires_at:
+                # Мут истек, удаляем
+                ticket_mutes.pop(user_id, None)
+                save_ticket_mutes()
+                return False, None
+            return True, mute_data
+        except (ValueError, TypeError):
+            return False, None
 
 
 def load_voice_mutes() -> dict[int, dict]:
@@ -1291,21 +1291,21 @@ def is_voice_muted(user_id: int) -> tuple[bool, dict | None]:
         return False, None
 
         expires_at_str = mute_data.get("expires_at")
-    if not expires_at_str:
-        return False, None
+        if not expires_at_str:
+            return False, None
 
-    try:
-        expires_at = datetime.fromisoformat(expires_at_str)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if utc_now() >= expires_at:
-# Мут истек, удаляем
-        voice_mutes.pop(user_id, None)
-        save_voice_mutes()
-        return False, None
-        return True, mute_data
-    except (ValueError, TypeError):
-        return False, None
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if utc_now() >= expires_at:
+                # Мут истек, удаляем
+                voice_mutes.pop(user_id, None)
+                save_voice_mutes()
+                return False, None
+            return True, mute_data
+        except (ValueError, TypeError):
+            return False, None
 
 
         tickets_config = load_tickets_config()
@@ -1419,15 +1419,15 @@ def load_super_admins() -> set[int]:
     return set()
 
 
-        project_birthday_announced_date = load_project_birthday_state()
-        scheduled_events = load_events()
-    for event_id, record in scheduled_events.items():
-        record.setdefault("id", event_id)
-        record.setdefault("initial_sent", False)
-        record.setdefault("reminder_sent", False)
-        record.setdefault("started_sent", False)
-        event_manager_roles = load_event_managers()
-        super_admin_ids = load_super_admins()
+project_birthday_announced_date = load_project_birthday_state()
+scheduled_events = load_events()
+for event_id, record in scheduled_events.items():
+    record.setdefault("id", event_id)
+    record.setdefault("initial_sent", False)
+    record.setdefault("reminder_sent", False)
+    record.setdefault("started_sent", False)
+event_manager_roles = load_event_managers()
+super_admin_ids = load_super_admins()
 
 
 def format_timedelta(td: timedelta) -> str:
@@ -1474,18 +1474,18 @@ def compute_cpu_gpu_usage() -> tuple[str, str]:
     cpu_usage = "н/д"
     if process:
         try:
-        cpu_usage = f"{process.cpu_percent(interval=None):.1f}%"
-    except Exception:
-        cpu_usage = "н/д"
-        gpu_usage = "н/д"
+            cpu_usage = f"{process.cpu_percent(interval=None):.1f}%"
+        except Exception:
+            cpu_usage = "н/д"
+    gpu_usage = "н/д"
     if GPUtil:
         try:
-        gpus = GPUtil.getGPUs()
-    if gpus:
-        gpu_usage = f"{gpus[0].load * 100:.1f}%"
-    except Exception:
-        gpu_usage = "н/д"
-        return cpu_usage, gpu_usage
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                gpu_usage = f"{gpus[0].load * 100:.1f}%"
+        except Exception:
+            gpu_usage = "н/д"
+    return cpu_usage, gpu_usage
 
 
 async def send_telegram_status_message():
@@ -1519,14 +1519,14 @@ async def send_telegram_message(chat_id: int, text: str):
         return
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text}
-    try:
-        async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=payload) as resp:
-    if resp.status != 200:
-        body = await resp.text()
-        print(f"[Telegram] Ошибка отправки: {resp.status} {body}")
-    except Exception as exc:
-        print(f"[Telegram] Ошибка: {exc}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=payload) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        print(f"[Telegram] Ошибка отправки: {resp.status} {body}")
+        except Exception as exc:
+            print(f"[Telegram] Ошибка: {exc}")
 
 
 def start_console_listener():
@@ -1536,20 +1536,20 @@ def reader():
     print("[Console] Введите команды (console-help для списка).")
     while True:
         try:
-        raw = input()
-    except EOFError:
-        break
-    if raw is None:
-        continue
+            raw = input()
+        except EOFError:
+            break
+        if raw is None:
+            continue
         command = raw.strip()
-    if not command:
-        continue
-    if not bot.loop.is_running():
-        print("[Console] Цикл бота ещё не запущен.")
-        continue
+        if not command:
+            continue
+        if not bot.loop.is_running():
+            print("[Console] Цикл бота ещё не запущен.")
+            continue
         future = asyncio.run_coroutine_threadsafe(process_console_command(command), bot.loop)
         future.add_done_callback(
-        lambda fut: fut.exception() and print(f"[Console] Ошибка: {fut.exception()}")
+            lambda fut: fut.exception() and print(f"[Console] Ошибка: {fut.exception()}")
         )
 
         console_listener_thread = threading.Thread(target=reader, daemon=True)
@@ -1559,15 +1559,15 @@ def reader():
 def get_generator_by_channel_id(channel_id: int) -> dict | None:
     for item in voice_config.get("generators", []):
         if item.get("generator_channel_id") == channel_id:
-        return item
-        return None
+            return item
+    return None
 
 
 def get_generator_by_control_channel(control_channel_id: int) -> dict | None:
     for item in voice_config.get("generators", []):
         if item.get("control_channel_id") == control_channel_id:
-        return item
-        return None
+            return item
+    return None
 
 
 def get_voice_view(generator_channel_id: int) -> "VoiceControlView":
@@ -1615,56 +1615,56 @@ async def ensure_voice_panels():
     updated = False
     for generator in voice_config.get("generators", []):
         generator_channel_id = generator.get("generator_channel_id")
-    if not generator_channel_id:
-        continue
+        if not generator_channel_id:
+            continue
 
-# Проверяем существование канала генератора
+        # Проверяем существование канала генератора
         generator_channel = await resolve_channel(generator_channel_id)
-    if not generator_channel:
-        print(f"[Voice] Канал генератора {generator_channel_id} не найден, пропускаем.")
-        continue
+        if not generator_channel:
+            print(f"[Voice] Канал генератора {generator_channel_id} не найден, пропускаем.")
+            continue
 
         control_id = generator.get("control_channel_id")
-    if not control_id:
-        continue
+        if not control_id:
+            continue
         channel = await resolve_channel(control_id)
-    if not channel:
-        continue
+        if not channel:
+            continue
         guild = channel.guild
-    if guild and generator.get("guild_id") != guild.id:
-        generator["guild_id"] = guild.id
-        updated = True
+        if guild and generator.get("guild_id") != guild.id:
+            generator["guild_id"] = guild.id
+            updated = True
         panel_id = generator.get("panel_message_id", 0)
         view = get_voice_view(generator_channel_id)
         embed = discord.Embed(
-        title="Конфигурация приватных комнат",
-        description=(
-        "Используйте кнопки ниже для управления вашей личной голосовой комнатой.\n"
-        "• Находитесь в своей комнате перед взаимодействием.\n"
-        "👑 - назначить нового создателя комнаты\n"
-        "👥 - изменить лимит участников\n"
-        "✏️ - изменить название комнаты\n"
-        "🔴 - добавить в ЧС комнаты\n"
-        "⚪ - удалить из ЧС'а комнаты\n"
-        "⛔ - выгнать из комнаты\n"
-        "🔒 - закрыть/открыть комнату\n"
-        "🗑️ - удалить комнату"
-        ),
-        color=0x5865F2,
+            title="Конфигурация приватных комнат",
+            description=(
+                "Используйте кнопки ниже для управления вашей личной голосовой комнатой.\n"
+                "• Находитесь в своей комнате перед взаимодействием.\n"
+                "👑 - назначить нового создателя комнаты\n"
+                "👥 - изменить лимит участников\n"
+                "✏️ - изменить название комнаты\n"
+                "🔴 - добавить в ЧС комнаты\n"
+                "⚪ - удалить из ЧС'а комнаты\n"
+                "⛔ - выгнать из комнаты\n"
+                "🔒 - закрыть/открыть комнату\n"
+                "🗑️ - удалить комнату"
+            ),
+            color=0x5865F2,
         )
-    try:
-        if panel_id:
-        message = await channel.fetch_message(panel_id)
-        await message.edit(embed=embed, view=view)
-        continue
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-        pass
-    try:
-        msg = await channel.send(embed=embed, view=view)
-        generator["panel_message_id"] = msg.id
-        updated = True
-    except discord.Forbidden:
-        print(f"[Voice] Нет прав для отправки панели в канале {control_id}")
+        try:
+            if panel_id:
+                message = await channel.fetch_message(panel_id)
+                await message.edit(embed=embed, view=view)
+                continue
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+        try:
+            msg = await channel.send(embed=embed, view=view)
+            generator["panel_message_id"] = msg.id
+            updated = True
+        except discord.Forbidden:
+            print(f"[Voice] Нет прав для отправки панели в канале {control_id}")
     if updated:
         save_voice_config()
 
@@ -1688,19 +1688,19 @@ async def ensure_ticket_panel():
         color=0x5865F2,
         )
         panel_id = tickets_config.get("panel_message_id", 0)
-    try:
-        if panel_id:
-        message = await channel.fetch_message(panel_id)
-        await message.edit(embed=embed, view=view)
-        return
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-        pass
-    try:
-        msg = await channel.send(embed=embed, view=view)
-        tickets_config["panel_message_id"] = msg.id
-        save_tickets_config()
-    except discord.Forbidden:
-        print(f"[Tickets] Нет прав для панели тикетов в канале {panel_channel_id}")
+        try:
+            if panel_id:
+                message = await channel.fetch_message(panel_id)
+                await message.edit(embed=embed, view=view)
+                return
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+        try:
+            msg = await channel.send(embed=embed, view=view)
+            tickets_config["panel_message_id"] = msg.id
+            save_tickets_config()
+        except discord.Forbidden:
+            print(f"[Tickets] Нет прав для панели тикетов в канале {panel_channel_id}")
 
 
 async def announce_raid_state(guild: discord.Guild, enabled: bool, *, auto: bool = False):
@@ -1711,11 +1711,11 @@ async def announce_raid_state(guild: discord.Guild, enabled: bool, *, auto: bool
     message = f"Режим защиты от рейда {status}{reason}."
     if channel:
         try:
-        await channel.send(message)
-    except discord.Forbidden:
-        pass
-        color = 0xED4245 if enabled else 0x57F287
-        await send_log_embed("Режим защиты от рейда", message, color=color)
+            await channel.send(message)
+        except discord.Forbidden:
+            pass
+    color = 0xED4245 if enabled else 0x57F287
+    await send_log_embed("Режим защиты от рейда", message, color=color)
 
 
 async def apply_raid_action(member: discord.Member):
@@ -1723,13 +1723,13 @@ async def apply_raid_action(member: discord.Member):
     reason = "Режим защиты от рейда"
     try:
         if action == "ban":
-        await member.ban(reason=reason, delete_message_days=0)
-        verb = "забанен"
-    else:
-        await member.kick(reason=reason)
-        verb = "кикнут"
+            await member.ban(reason=reason, delete_message_days=0)
+            verb = "забанен"
+        else:
+            await member.kick(reason=reason)
+            verb = "кикнут"
         await send_log_embed(
-        "Рейд-защита",
+            "Рейд-защита",
         f"{member.mention} был {verb} автоматически из-за режима защиты от рейда.",
         color=0xED4245,
         member=member,
@@ -1756,13 +1756,13 @@ async def handle_raid_join_detection(member: discord.Member) -> bool:
         joins.popleft()
     if raid_config.get("enabled") or len(joins) >= threshold:
         if not raid_config.get("enabled"):
-        raid_config["enabled"] = True
-        raid_config["triggered_at"] = utc_now().isoformat()
-        save_raid_config()
-        await announce_raid_state(guild, True, auto=True)
+            raid_config["enabled"] = True
+            raid_config["triggered_at"] = utc_now().isoformat()
+            save_raid_config()
+            await announce_raid_state(guild, True, auto=True)
         await apply_raid_action(member)
         return True
-        return False
+    return False
 
 
 def get_room_entry(room_id: str) -> dict | None:
@@ -1820,188 +1820,192 @@ async def create_personal_voice(member: discord.Member, generator: dict, source_
 
 # Дополнительная проверка: убеждаемся, что генератор не будет модифицирован
         generator_channel_ids = {gen.get("generator_channel_id") for gen in voice_config.get("generators", []) if gen.get("generator_channel_id")}
-    if source_channel.id not in generator_channel_ids:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: source_channel {source_channel.id} не найден в списке генераторов!")
-        return
+        if source_channel.id not in generator_channel_ids:
+            print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: source_channel {source_channel.id} не найден в списке генераторов!")
+            return
 
-    if not generator.get("guild_id"):
-        generator["guild_id"] = guild.id
+        if not generator.get("guild_id"):
+            generator["guild_id"] = guild.id
         category = guild.get_channel(generator.get("category_id"))
         template = generator.get("default_name", "{user} комната")
         name = template.replace("{user}", member.display_name)
         limit_raw = generator.get("default_limit") or 0
-    try:
-        limit = int(limit_raw)
-    except (TypeError, ValueError):
-        limit = 0
-        private_value = generator.get("default_private", False)
-    if isinstance(private_value, str):
-        private = private_value.lower() in {"true", "1", "yes", "on"}
-    else:
-        private = bool(private_value)
-        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {}
-    if private:
-        overwrites[guild.default_role] = discord.PermissionOverwrite(connect=False, view_channel=False)
-        overwrites[member] = discord.PermissionOverwrite(connect=True, view_channel=True, speak=True)
-    else:
-        overwrites[guild.default_role] = discord.PermissionOverwrite(connect=True, view_channel=True)
-        overwrites[member] = discord.PermissionOverwrite(connect=True, view_channel=True, speak=True)
-        user_limit = limit if limit > 0 else None
-    try:
-# Создаем НОВЫЙ канал, а не используем канал генератора
-# Важно: source_channel (канал генератора) НЕ используется для создания комнаты
-        new_channel = await guild.create_voice_channel(
-        name=name,
-        category=category if isinstance(category, discord.CategoryChannel) else None,
-        user_limit=user_limit,
-        overwrites=overwrites,
-        reason="Создание личной комнаты",
-        )
-
-# Перемещаем комнату сразу под генератор
-    if source_channel:
         try:
-# Обновляем список каналов после создания нового канала
-        await asyncio.sleep(0.2)  # Небольшая задержка для обновления позиций
-        await source_channel.guild.fetch_channels()
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            limit = 0
+        private_value = generator.get("default_private", False)
+        if isinstance(private_value, str):
+            private = private_value.lower() in {"true", "1", "yes", "on"}
+        else:
+            private = bool(private_value)
+        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {}
+        if private:
+            overwrites[guild.default_role] = discord.PermissionOverwrite(connect=False, view_channel=False)
+            overwrites[member] = discord.PermissionOverwrite(connect=True, view_channel=True, speak=True)
+        else:
+            overwrites[guild.default_role] = discord.PermissionOverwrite(connect=True, view_channel=True)
+            overwrites[member] = discord.PermissionOverwrite(connect=True, view_channel=True, speak=True)
+        user_limit = limit if limit > 0 else None
+        try:
+            # Создаем НОВЫЙ канал, а не используем канал генератора
+            # Важно: source_channel (канал генератора) НЕ используется для создания комнаты
+            new_channel = await guild.create_voice_channel(
+                name=name,
+                category=category if isinstance(category, discord.CategoryChannel) else None,
+                user_limit=user_limit,
+                overwrites=overwrites,
+                reason="Создание личной комнаты",
+            )
 
-        refreshed_generator = guild.get_channel(source_channel.id)
-    if not refreshed_generator:
-        return
+            # Перемещаем комнату сразу под генератор
+            if source_channel:
+                try:
+                    # Обновляем список каналов после создания нового канала
+                    await asyncio.sleep(0.2)  # Небольшая задержка для обновления позиций
+                    await source_channel.guild.fetch_channels()
 
-        generator_position = refreshed_generator.position
-        print(f"[Voice] Позиция генератора: {generator_position}, позиция новой комнаты: {new_channel.position}")
+                    refreshed_generator = guild.get_channel(source_channel.id)
+                    if not refreshed_generator:
+                        return
 
-# В Discord: меньшая позиция = выше в списке
-# Чтобы создать канал ПОД генератором, нужно использовать позицию БОЛЬШЕ позиции генератора
-# Но так как новый канал уже создан, его позиция может быть в конце списка
-# Нам нужно переместить его на позицию generator_position + 1
+                    generator_position = refreshed_generator.position
+                    print(f"[Voice] Позиция генератора: {generator_position}, позиция новой комнаты: {new_channel.position}")
 
-# Находим все голосовые каналы в той же категории
-        category = refreshed_generator.category
-        voice_channels = [
-        ch for ch in guild.voice_channels 
-    if ch.category == category
-        ]
-        voice_channels.sort(key=lambda x: x.position)
+                    # В Discord: меньшая позиция = выше в списке
+                    # Чтобы создать канал ПОД генератором, нужно использовать позицию БОЛЬШЕ позиции генератора
+                    # Но так как новый канал уже создан, его позиция может быть в конце списка
+                    # Нам нужно переместить его на позицию generator_position + 1
 
-# Находим индекс генератора
-        generator_index = None
-    for i, ch in enumerate(voice_channels):
-        if ch.id == refreshed_generator.id:
-        generator_index = i
-        break
+                    # Находим все голосовые каналы в той же категории
+                    category = refreshed_generator.category
+                    voice_channels = [
+                        ch for ch in guild.voice_channels 
+                        if ch.category == category
+                    ]
+                    voice_channels.sort(key=lambda x: x.position)
 
-    if generator_index is None:
-        print(f"[Voice] Не удалось найти генератор в списке каналов")
-        return
+                    # Находим индекс генератора
+                    generator_index = None
+                    for i, ch in enumerate(voice_channels):
+                        if ch.id == refreshed_generator.id:
+                            generator_index = i
+                            break
 
-# Находим позицию следующего канала после генератора (если есть)
-# Или используем позицию генератора + 1
-        room_needs_positioning = True
-    if generator_index + 1 < len(voice_channels):
-# Есть канал после генератора - используем его позицию
-        next_channel = voice_channels[generator_index + 1]
-# Если следующий канал - это наша новая комната, значит она уже под генератором
-    if next_channel.id == new_channel.id:
-        print(f"[Voice] Комната уже под генератором, пропускаем перемещение")
-        room_needs_positioning = False
-    else:
-        target_position = next_channel.position
-        await new_channel.edit(position=target_position)
-    else:
-# Генератор последний - используем позицию генератора + 2
-# (пробуем +2 вместо +1, так как +1 может создавать канал над генератором)
-        target_position = generator_position + 2
-# Перемещаем канал под генератор
-        await new_channel.edit(position=target_position)
+                    if generator_index is None:
+                        print(f"[Voice] Не удалось найти генератор в списке каналов")
+                        return
 
-# Проверяем результат и исправляем, если комната оказалась над генератором
-    if room_needs_positioning:
-        await asyncio.sleep(0.1)
-        await source_channel.guild.fetch_channels()
-        final_generator = guild.get_channel(source_channel.id)
-        final_room = guild.get_channel(new_channel.id)
+                    # Находим позицию следующего канала после генератора (если есть)
+                    # Или используем позицию генератора + 1
+                    room_needs_positioning = True
+                    if generator_index + 1 < len(voice_channels):
+                        # Есть канал после генератора - используем его позицию
+                        next_channel = voice_channels[generator_index + 1]
+                        # Если следующий канал - это наша новая комната, значит она уже под генератором
+                        if next_channel.id == new_channel.id:
+                            print(f"[Voice] Комната уже под генератором, пропускаем перемещение")
+                            room_needs_positioning = False
+                        else:
+                            target_position = next_channel.position
+                            await new_channel.edit(position=target_position)
+                    else:
+                        # Генератор последний - используем позицию генератора + 2
+                        # (пробуем +2 вместо +1, так как +1 может создавать канал над генератором)
+                        target_position = generator_position + 2
+                        # Перемещаем канал под генератор
+                        await new_channel.edit(position=target_position)
 
-    if final_generator and final_room:
-        if final_room.position < final_generator.position:
-# Комната выше генератора - это неправильно, исправляем
-        print(f"[Voice] Комната оказалась выше генератора! Генератор: {final_generator.position}, Комната: {final_room.position}")
-# Используем позицию генератора + 2 (если +1 создает канал над генератором)
-        await new_channel.edit(position=final_generator.position + 2)
-        print(f"[Voice] Исправление: перемещаем комнату на позицию {final_generator.position + 2}")
-    elif final_room.position == final_generator.position:
-# Комната на той же позиции - перемещаем её вниз
-        await new_channel.edit(position=final_generator.position + 1)
-        print(f"[Voice] Комната на позиции генератора, перемещаем вниз на позицию {final_generator.position + 1}")
-    else:
-        print(f"[Voice] Комната {new_channel.id} успешно размещена под генератором (генератор: {final_generator.position}, комната: {final_room.position})")
-    else:
-        if 'target_position' in locals():
-        print(f"[Voice] Комната {new_channel.id} перемещена на позицию {target_position} (позиция генератора: {generator_position})")
-    except discord.HTTPException as e:
-        print(f"[Voice] Не удалось переместить комнату под генератор: {e}")
-    except Exception as e:
-        print(f"[Voice] Ошибка при перемещении комнаты: {e}")
-        import traceback
-        traceback.print_exc()
+                    # Проверяем результат и исправляем, если комната оказалась над генератором
+                    if room_needs_positioning:
+                        await asyncio.sleep(0.1)
+                        await source_channel.guild.fetch_channels()
+                        final_generator = guild.get_channel(source_channel.id)
+                        final_room = guild.get_channel(new_channel.id)
 
-# Защита: убеждаемся, что мы не сохраняем канал генератора как комнату
-    if new_channel.id == generator_channel_id:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: попытка сохранить канал генератора {generator_channel_id} как комнату!")
-        await new_channel.delete(reason="Ошибка: это канал генератора, не комната")
-        return
+                        if final_generator and final_room:
+                            if final_room.position < final_generator.position:
+                                # Комната выше генератора - это неправильно, исправляем
+                                print(f"[Voice] Комната оказалась выше генератора! Генератор: {final_generator.position}, Комната: {final_room.position}")
+                                # Используем позицию генератора + 2 (если +1 создает канал над генератором)
+                                await new_channel.edit(position=final_generator.position + 2)
+                                print(f"[Voice] Исправление: перемещаем комнату на позицию {final_generator.position + 2}")
+                            elif final_room.position == final_generator.position:
+                                # Комната на той же позиции - перемещаем её вниз
+                                await new_channel.edit(position=final_generator.position + 1)
+                                print(f"[Voice] Комната на позиции генератора, перемещаем вниз на позицию {final_generator.position + 1}")
+                            else:
+                                print(f"[Voice] Комната {new_channel.id} успешно размещена под генератором (генератор: {final_generator.position}, комната: {final_room.position})")
+                        else:
+                            if 'target_position' in locals():
+                                print(f"[Voice] Комната {new_channel.id} перемещена на позицию {target_position} (позиция генератора: {generator_position})")
+                except discord.HTTPException as e:
+                    print(f"[Voice] Не удалось переместить комнату под генератор: {e}")
+                except Exception as e:
+                    print(f"[Voice] Ошибка при перемещении комнаты: {e}")
+                    import traceback
+                    traceback.print_exc()
 
-# Защита: убеждаемся, что канал генератора не изменяется
-    if new_channel.id == source_channel.id:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал совпадает с каналом генератора!")
-        await new_channel.delete(reason="Ошибка: новый канал совпадает с генератором")
-        return
+            # Защита: убеждаемся, что мы не сохраняем канал генератора как комнату
+            if new_channel.id == generator_channel_id:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: попытка сохранить канал генератора {generator_channel_id} как комнату!")
+                await new_channel.delete(reason="Ошибка: это канал генератора, не комната")
+                return
 
-        print(f"[Voice] Создана новая комната {new_channel.id} для пользователя {member.id}, генератор {generator_channel_id} не изменен")
+            # Защита: убеждаемся, что канал генератора не изменяется
+            if new_channel.id == source_channel.id:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал совпадает с каналом генератора!")
+                await new_channel.delete(reason="Ошибка: новый канал совпадает с генератором")
+                return
 
-# Финальная проверка: убеждаемся, что новый канал не является генератором
-    if new_channel.id == generator_channel_id:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал {new_channel.id} совпадает с генератором!")
-        await new_channel.delete(reason="Ошибка: канал совпадает с генератором")
-        return
+            print(f"[Voice] Создана новая комната {new_channel.id} для пользователя {member.id}, генератор {generator_channel_id} не изменен")
 
-# Проверяем, что генератор не попадет в список комнат
-        generator_channel_ids = {gen.get("generator_channel_id") for gen in voice_config.get("generators", []) if gen.get("generator_channel_id")}
-    if new_channel.id in generator_channel_ids:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал {new_channel.id} найден в списке генераторов!")
-        await new_channel.delete(reason="Ошибка: канал является генератором")
-        return
+            # Финальная проверка: убеждаемся, что новый канал не является генератором
+            if new_channel.id == generator_channel_id:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал {new_channel.id} совпадает с генератором!")
+                await new_channel.delete(reason="Ошибка: канал совпадает с генератором")
+                return
 
-# ФИНАЛЬНАЯ ПРОВЕРКА ПЕРЕД СОХРАНЕНИЕМ: Убеждаемся, что мы не сохраняем генератор
-        final_generator_check = get_generator_by_channel_id(new_channel.id)
-    if final_generator_check:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: попытка сохранить генератор {new_channel.id} как комнату! Удаляем новый канал.")
-        await new_channel.delete(reason="Ошибка: канал является генератором")
-        return
+            # Проверяем, что генератор не попадет в список комнат
+            generator_channel_ids = {gen.get("generator_channel_id") for gen in voice_config.get("generators", []) if gen.get("generator_channel_id")}
+            if new_channel.id in generator_channel_ids:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал {new_channel.id} найден в списке генераторов!")
+                await new_channel.delete(reason="Ошибка: канал является генератором")
+                return
 
-        generator_channel_ids_final = {gen.get("generator_channel_id") for gen in voice_config.get("generators", []) if gen.get("generator_channel_id")}
-    if new_channel.id in generator_channel_ids_final:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал {new_channel.id} найден в списке генераторов! Удаляем.")
-        await new_channel.delete(reason="Ошибка: канал является генератором")
-        return
+            # ФИНАЛЬНАЯ ПРОВЕРКА ПЕРЕД СОХРАНЕНИЕМ: Убеждаемся, что мы не сохраняем генератор
+            final_generator_check = get_generator_by_channel_id(new_channel.id)
+            if final_generator_check:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: попытка сохранить генератор {new_channel.id} как комнату! Удаляем новый канал.")
+                await new_channel.delete(reason="Ошибка: канал является генератором")
+                return
 
-# Убеждаемся, что генератор не попал в список комнат
-    if str(generator_channel_id) in voice_config.get("rooms", {}):
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: генератор {generator_channel_id} в списке комнат! Удаляем запись.")
-        voice_config["rooms"].pop(str(generator_channel_id), None)
+            generator_channel_ids_final = {gen.get("generator_channel_id") for gen in voice_config.get("generators", []) if gen.get("generator_channel_id")}
+            if new_channel.id in generator_channel_ids_final:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: новый канал {new_channel.id} найден в списке генераторов! Удаляем.")
+                await new_channel.delete(reason="Ошибка: канал является генератором")
+                return
 
-        print(f"[Voice] Сохраняем комнату {new_channel.id}, генератор {generator_channel_id} НЕ в списке комнат")
-        voice_config["rooms"][str(new_channel.id)] = {
-        "owner_id": member.id,
-        "guild_id": guild.id,
-        "generator_channel_id": generator_channel_id,
-        "name": name,
-        "limit": limit,
-        "private": private,
-        "blocked_ids": [],
-        }
-        save_voice_config()
+            # Убеждаемся, что генератор не попал в список комнат
+            if str(generator_channel_id) in voice_config.get("rooms", {}):
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: генератор {generator_channel_id} в списке комнат! Удаляем запись.")
+                voice_config["rooms"].pop(str(generator_channel_id), None)
+
+            print(f"[Voice] Сохраняем комнату {new_channel.id}, генератор {generator_channel_id} НЕ в списке комнат")
+            voice_config["rooms"][str(new_channel.id)] = {
+                "owner_id": member.id,
+                "guild_id": guild.id,
+                "generator_channel_id": generator_channel_id,
+                "name": name,
+                "limit": limit,
+                "private": private,
+                "blocked_ids": [],
+            }
+            save_voice_config()
+        except Exception as e:
+            print(f"[Voice] Ошибка при создании комнаты: {e}")
+            import traceback
+            traceback.print_exc()
 
 # ФИНАЛЬНАЯ ПРОВЕРКА ПОСЛЕ СОХРАНЕНИЯ: Убеждаемся, что генератор не попал в список
     if str(generator_channel_id) in voice_config.get("rooms", {}):
@@ -2031,23 +2035,23 @@ async def create_personal_voice(member: discord.Member, generator: dict, source_
 
 # ФИНАЛЬНАЯ ПРОВЕРКА: Убеждаемся, что генератор не был модифицирован
         refreshed_generator = guild.get_channel(generator_channel_id)
-    if refreshed_generator:
-        if refreshed_generator.name != original_generator_name:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: имя генератора изменилось с '{original_generator_name}' на '{refreshed_generator.name}'!")
-# Восстанавливаем оригинальное имя генератора
-    try:
-        await refreshed_generator.edit(name=original_generator_name, reason="Восстановление имени генератора")
-        print(f"[Voice] Имя генератора восстановлено: '{original_generator_name}'")
-    except Exception as e:
-        print(f"[Voice] Не удалось восстановить имя генератора: {e}")
-    else:
-        print(f"[Voice] Генератор {generator_channel_id} не был модифицирован, имя осталось: '{original_generator_name}'")
-    else:
-        print(f"[Voice] ПРЕДУПРЕЖДЕНИЕ: генератор {generator_channel_id} не найден после создания комнаты!")
+        if refreshed_generator:
+            if refreshed_generator.name != original_generator_name:
+                print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: имя генератора изменилось с '{original_generator_name}' на '{refreshed_generator.name}'!")
+                # Восстанавливаем оригинальное имя генератора
+                try:
+                    await refreshed_generator.edit(name=original_generator_name, reason="Восстановление имени генератора")
+                    print(f"[Voice] Имя генератора восстановлено: '{original_generator_name}'")
+                except Exception as e:
+                    print(f"[Voice] Не удалось восстановить имя генератора: {e}")
+            else:
+                print(f"[Voice] Генератор {generator_channel_id} не был модифицирован, имя осталось: '{original_generator_name}'")
+        else:
+            print(f"[Voice] ПРЕДУПРЕЖДЕНИЕ: генератор {generator_channel_id} не найден после создания комнаты!")
 
         await send_log_embed(
-        "Создана личная комната",
-        f"{member.mention} создал комнату {new_channel.name}.",
+            "Создана личная комната",
+            f"{member.mention} создал комнату {new_channel.name}.",
         color=0x57F287,
         member=member,
         )
@@ -2089,11 +2093,11 @@ async def delete_voice_room(room_id: str, reason: str):
     if not room:
         return
         channel = bot.get_channel(room_id_int)
-    if channel:
-        try:
-        await channel.delete(reason=reason)
-    except discord.Forbidden:
-        pass
+        if channel:
+            try:
+                await channel.delete(reason=reason)
+            except discord.Forbidden:
+                pass
         save_voice_config()
 
 
@@ -2164,21 +2168,21 @@ async def handle_generator_join(member: discord.Member, after: discord.VoiceStat
     if "position" not in generator:
         generator["position"] = generator_position
         save_voice_config()
-# Восстанавливаем генератор через общую функцию
+        # Восстанавливаем генератор через общую функцию
         await restore_generator(generator, generator_channel_id)
     else:
-# Проверяем, что имя генератора не изменилось
-    if refreshed_generator_channel.name != generator_name:
-        print(f"[Voice] Имя генератора изменилось с '{generator_name}' на '{refreshed_generator_channel.name}', восстанавливаем...")
-    try:
-        await refreshed_generator_channel.edit(name=generator_name, reason="Восстановление имени генератора")
-        print(f"[Voice] Имя генератора восстановлено: '{generator_name}'")
-    except Exception as e:
-        print(f"[Voice] Не удалось восстановить имя генератора: {e}")
-    else:
-        print(f"[Voice] Генератор {generator_channel_id} существует и не был изменен")
+        # Проверяем, что имя генератора не изменилось
+        if refreshed_generator_channel.name != generator_name:
+            print(f"[Voice] Имя генератора изменилось с '{generator_name}' на '{refreshed_generator_channel.name}', восстанавливаем...")
+            try:
+                await refreshed_generator_channel.edit(name=generator_name, reason="Восстановление имени генератора")
+                print(f"[Voice] Имя генератора восстановлено: '{generator_name}'")
+            except Exception as e:
+                print(f"[Voice] Не удалось восстановить имя генератора: {e}")
+        else:
+            print(f"[Voice] Генератор {generator_channel_id} существует и не был изменен")
 
-        return True
+    return True
 
 
 def get_user_room(member: discord.Member) -> tuple[discord.VoiceChannel, str, dict] | None:
@@ -2229,12 +2233,12 @@ def cleanup_stale_voice_rooms():
 
     for room_id in list(voice_config.get("rooms", {}).keys()):
         room_id_int = int(room_id)
-# Пропускаем каналы генераторов - они не должны удаляться
-    if room_id_int in generator_channel_ids:
-        continue
-    if bot.get_channel(room_id_int) is None:
-        voice_config["rooms"].pop(room_id, None)
-        removed = True
+        # Пропускаем каналы генераторов - они не должны удаляться
+        if room_id_int in generator_channel_ids:
+            continue
+        if bot.get_channel(room_id_int) is None:
+            voice_config["rooms"].pop(room_id, None)
+            removed = True
     if removed:
         save_voice_config()
 
@@ -2244,206 +2248,206 @@ async def enforce_room_membership(member: discord.Member, channel: discord.Voice
     if not room:
         return
         blocked_ids = room.get("blocked_ids", [])
-    if member.id in blocked_ids:
-        try:
-        await member.move_to(None)
-    except discord.HTTPException:
-        pass
-    try:
-        await member.send("Вы находитесь в чёрном списке этой комнаты.")
-    except discord.HTTPException:
-        pass
+        if member.id in blocked_ids:
+            try:
+                await member.move_to(None)
+            except discord.HTTPException:
+                pass
+            try:
+                await member.send("Вы находитесь в чёрном списке этой комнаты.")
+            except discord.HTTPException:
+                pass
         return
 
 
 class RenameRoomModal(discord.ui.Modal):
-def __init__(self, channel_id: int, room_id: str):
-    super().__init__(title="Изменить название", timeout=120)
-    self.channel_id = channel_id
-    self.room_id = room_id
-    self.name_input = discord.ui.TextInput(
-    label="Новое название",
-    placeholder="Например: Комната друзей",
-    max_length=100,
-    )
-    self.add_item(self.name_input)
+    def __init__(self, channel_id: int, room_id: str):
+        super().__init__(title="Изменить название", timeout=120)
+        self.channel_id = channel_id
+        self.room_id = room_id
+        self.name_input = discord.ui.TextInput(
+            label="Новое название",
+            placeholder="Например: Комната друзей",
+            max_length=100,
+        )
+        self.add_item(self.name_input)
 
-async def on_submit(self, interaction: discord.Interaction):
-    channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
-    room = get_room_entry(self.room_id)
-    if not channel or not room:
-        await interaction.response.send_message("Комната не найдена.", ephemeral=True)
-        return
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
+        room = get_room_entry(self.room_id)
+        if not channel or not room:
+            await interaction.response.send_message("Комната не найдена.", ephemeral=True)
+            return
 
-# Защита: проверяем, что это не канал генератора
+        # Защита: проверяем, что это не канал генератора
         generator = get_generator_by_channel_id(self.channel_id)
-    if generator:
-        await interaction.response.send_message("Нельзя переименовать канал генератора.", ephemeral=True)
-        return
+        if generator:
+            await interaction.response.send_message("Нельзя переименовать канал генератора.", ephemeral=True)
+            return
 
         new_name = self.name_input.value.strip()
-    if not new_name:
-        await interaction.response.send_message("Название не может быть пустым.", ephemeral=True)
-        return
-    try:
-        await channel.edit(name=new_name)
-        room["name"] = new_name
-        save_voice_config()
-        await interaction.response.send_message(f"Название обновлено: **{new_name}**", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("Не удалось изменить название (нет прав).", ephemeral=True)
+        if not new_name:
+            await interaction.response.send_message("Название не может быть пустым.", ephemeral=True)
+            return
+        try:
+            await channel.edit(name=new_name)
+            room["name"] = new_name
+            save_voice_config()
+            await interaction.response.send_message(f"Название обновлено: **{new_name}**", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("Не удалось изменить название (нет прав).", ephemeral=True)
 
 
 class RoomLimitModal(discord.ui.Modal):
-def __init__(self, channel_id: int, room_id: str):
-    super().__init__(title="Слоты", timeout=120)
-    self.channel_id = channel_id
-    self.room_id = room_id
-    self.limit_input = discord.ui.TextInput(
-    label="Количество слотов (1-99)",
-    placeholder="Например: 6",
-    max_length=2,
-    )
-    self.add_item(self.limit_input)
+    def __init__(self, channel_id: int, room_id: str):
+        super().__init__(title="Слоты", timeout=120)
+        self.channel_id = channel_id
+        self.room_id = room_id
+        self.limit_input = discord.ui.TextInput(
+            label="Количество слотов (1-99)",
+            placeholder="Например: 6",
+            max_length=2,
+        )
+        self.add_item(self.limit_input)
 
-async def on_submit(self, interaction: discord.Interaction):
-    channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
-    room = get_room_entry(self.room_id)
-    if not channel or not room:
-        await interaction.response.send_message("Комната не найдена.", ephemeral=True)
-        return
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
+        room = get_room_entry(self.room_id)
+        if not channel or not room:
+            await interaction.response.send_message("Комната не найдена.", ephemeral=True)
+            return
 
-# Защита: проверяем, что это не канал генератора
+        # Защита: проверяем, что это не канал генератора
         generator = get_generator_by_channel_id(self.channel_id)
-    if generator:
-        await interaction.response.send_message("Нельзя изменить лимит канала генератора.", ephemeral=True)
-        return
+        if generator:
+            await interaction.response.send_message("Нельзя изменить лимит канала генератора.", ephemeral=True)
+            return
 
-    try:
-        limit = int(self.limit_input.value)
-    except ValueError:
-        await interaction.response.send_message("Введите число от 1 до 99.", ephemeral=True)
-        return
-    if limit < 1 or limit > 99:
-        await interaction.response.send_message("Лимит должен быть от 1 до 99.", ephemeral=True)
-        return
-    try:
-        await channel.edit(user_limit=limit)
-        room["limit"] = limit
-        save_voice_config()
-        await interaction.response.send_message(f"Лимит обновлён: **{limit}** слотов.", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("Не удалось изменить лимит (нет прав).", ephemeral=True)
+        try:
+            limit = int(self.limit_input.value)
+        except ValueError:
+            await interaction.response.send_message("Введите число от 1 до 99.", ephemeral=True)
+            return
+        if limit < 1 or limit > 99:
+            await interaction.response.send_message("Лимит должен быть от 1 до 99.", ephemeral=True)
+            return
+        try:
+            await channel.edit(user_limit=limit)
+            room["limit"] = limit
+            save_voice_config()
+            await interaction.response.send_message(f"Лимит обновлён: **{limit}** слотов.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("Не удалось изменить лимит (нет прав).", ephemeral=True)
 
 
 class KickMemberModal(discord.ui.Modal):
-def __init__(self, channel_id: int, room_id: str):
-    super().__init__(title="Выгнать из комнаты", timeout=120)
-    self.channel_id = channel_id
-    self.room_id = room_id
-    self.user_input = discord.ui.TextInput(
-    label="ID или @пользователя",
-    placeholder="Например: 1234567890 или @user",
-    )
-    self.add_item(self.user_input)
+    def __init__(self, channel_id: int, room_id: str):
+        super().__init__(title="Выгнать из комнаты", timeout=120)
+        self.channel_id = channel_id
+        self.room_id = room_id
+        self.user_input = discord.ui.TextInput(
+            label="ID или @пользователя",
+            placeholder="Например: 1234567890 или @user",
+        )
+        self.add_item(self.user_input)
 
-async def on_submit(self, interaction: discord.Interaction):
-    if not interaction.guild:
-        await interaction.response.send_message("Команда доступна только на сервере.", ephemeral=True)
-        return
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("Команда доступна только на сервере.", ephemeral=True)
+            return
         channel = interaction.guild.get_channel(self.channel_id)
         room = get_room_entry(self.room_id)
-    if not channel or not room:
-        await interaction.response.send_message("Комната не найдена.", ephemeral=True)
-        return
+        if not channel or not room:
+            await interaction.response.send_message("Комната не найдена.", ephemeral=True)
+            return
         user_id = parse_user_id(self.user_input.value)
-    if not user_id:
-        await interaction.response.send_message("Не удалось распознать ID пользователя.", ephemeral=True)
-        return
+        if not user_id:
+            await interaction.response.send_message("Не удалось распознать ID пользователя.", ephemeral=True)
+            return
         member = interaction.guild.get_member(user_id)
-    if member is None or member not in channel.members:
-        await interaction.response.send_message("Участник не находится в вашей комнате.", ephemeral=True)
-        return
-    try:
-        await member.move_to(None)
-        await interaction.response.send_message(f"{member.mention} был кикнут из комнаты.", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("Не могу переместить участника (нет прав).", ephemeral=True)
+        if member is None or member not in channel.members:
+            await interaction.response.send_message("Участник не находится в вашей комнате.", ephemeral=True)
+            return
+        try:
+            await member.move_to(None)
+            await interaction.response.send_message(f"{member.mention} был кикнут из комнаты.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("Не могу переместить участника (нет прав).", ephemeral=True)
 
 
 class BlockMemberModal(discord.ui.Modal):
-def __init__(self, channel_id: int, room_id: str, action: str):
-    title = "Добавить в ЧС" if action == "add" else "Убрать из ЧС"
-    super().__init__(title=title, timeout=120)
-    self.channel_id = channel_id
-    self.room_id = room_id
-    self.action = action
-    self.user_input = discord.ui.TextInput(
-    label="ID или @пользователя",
-    placeholder="Например: 1234567890 или @user",
-    )
-    self.add_item(self.user_input)
+    def __init__(self, channel_id: int, room_id: str, action: str):
+        title = "Добавить в ЧС" if action == "add" else "Убрать из ЧС"
+        super().__init__(title=title, timeout=120)
+        self.channel_id = channel_id
+        self.room_id = room_id
+        self.action = action
+        self.user_input = discord.ui.TextInput(
+            label="ID или @пользователя",
+            placeholder="Например: 1234567890 или @user",
+        )
+        self.add_item(self.user_input)
 
-async def on_submit(self, interaction: discord.Interaction):
-    channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
-    room = get_room_entry(self.room_id)
-    if not channel or not room:
-        await interaction.response.send_message("Комната не найдена.", ephemeral=True)
-        return
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
+        room = get_room_entry(self.room_id)
+        if not channel or not room:
+            await interaction.response.send_message("Комната не найдена.", ephemeral=True)
+            return
         user_id = parse_user_id(self.user_input.value)
-    if not user_id:
-        await interaction.response.send_message("Не удалось распознать ID пользователя.", ephemeral=True)
-        return
+        if not user_id:
+            await interaction.response.send_message("Не удалось распознать ID пользователя.", ephemeral=True)
+            return
         blocked = room.setdefault("blocked_ids", [])
-    if self.action == "add":
-        if user_id in blocked:
-        await interaction.response.send_message("Пользователь уже в чёрном списке.", ephemeral=True)
-        return
-        blocked.append(user_id)
-        save_voice_config()
-        user = interaction.guild.get_member(user_id)
-    if user and user in channel.members:
-        try:
-        await user.move_to(None)
-    except discord.HTTPException:
-        pass
-        await apply_room_privacy(channel, room["owner_id"], room.get("private", False))
-        await interaction.response.send_message("Пользователь добавлен в чёрный список комнаты.", ephemeral=True)
-    else:
-        if user_id not in blocked:
-        await interaction.response.send_message("Этот пользователь не в чёрном списке.", ephemeral=True)
-        return
-        blocked.remove(user_id)
+        if self.action == "add":
+            if user_id in blocked:
+                await interaction.response.send_message("Пользователь уже в чёрном списке.", ephemeral=True)
+                return
+            blocked.append(user_id)
+            save_voice_config()
+            user = interaction.guild.get_member(user_id)
+            if user and user in channel.members:
+                try:
+                    await user.move_to(None)
+                except discord.HTTPException:
+                    pass
+            await apply_room_privacy(channel, room["owner_id"], room.get("private", False))
+            await interaction.response.send_message("Пользователь добавлен в чёрный список комнаты.", ephemeral=True)
+        else:
+            if user_id not in blocked:
+                await interaction.response.send_message("Этот пользователь не в чёрном списке.", ephemeral=True)
+                return
+            blocked.remove(user_id)
         save_voice_config()
         await apply_room_privacy(channel, room["owner_id"], room.get("private", False))
         await interaction.response.send_message("Пользователь удалён из чёрного списка.", ephemeral=True)
 
 
 class TransferOwnerModal(discord.ui.Modal):
-def __init__(self, channel_id: int, room_id: str):
-    super().__init__(title="Передать Владельца", timeout=120)
-    self.channel_id = channel_id
-    self.room_id = room_id
-    self.user_input = discord.ui.TextInput(
-    label="ID или @участника (должен быть в комнате)",
-    placeholder="Например: 1234567890 или @user",
-    )
-    self.add_item(self.user_input)
+    def __init__(self, channel_id: int, room_id: str):
+        super().__init__(title="Передать Владельца", timeout=120)
+        self.channel_id = channel_id
+        self.room_id = room_id
+        self.user_input = discord.ui.TextInput(
+            label="ID или @участника (должен быть в комнате)",
+            placeholder="Например: 1234567890 или @user",
+        )
+        self.add_item(self.user_input)
 
-async def on_submit(self, interaction: discord.Interaction):
-    channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
-    room = get_room_entry(self.room_id)
-    if not channel or not room:
-        await interaction.response.send_message("Комната не найдена.", ephemeral=True)
-        return
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
+        room = get_room_entry(self.room_id)
+        if not channel or not room:
+            await interaction.response.send_message("Комната не найдена.", ephemeral=True)
+            return
         user_id = parse_user_id(self.user_input.value)
-    if not user_id:
-        await interaction.response.send_message("Не удалось распознать ID пользователя.", ephemeral=True)
-        return
+        if not user_id:
+            await interaction.response.send_message("Не удалось распознать ID пользователя.", ephemeral=True)
+            return
         member = interaction.guild.get_member(user_id)
-    if member is None or member not in channel.members:
-        await interaction.response.send_message("Участник должен находиться в комнате.", ephemeral=True)
-        return
+        if member is None or member not in channel.members:
+            await interaction.response.send_message("Участник должен находиться в комнате.", ephemeral=True)
+            return
         room["owner_id"] = member.id
         save_voice_config()
         await apply_room_privacy(channel, member.id, room.get("private", False))
@@ -2451,9 +2455,9 @@ async def on_submit(self, interaction: discord.Interaction):
 
 
 class VoiceControlView(discord.ui.View):
-def __init__(self, generator_channel_id: int):
-    super().__init__(timeout=None)
-    self.generator_channel_id = generator_channel_id
+    def __init__(self, generator_channel_id: int):
+        super().__init__(timeout=None)
+        self.generator_channel_id = generator_channel_id
     self.rename_button.custom_id = f"voice_rename:{generator_channel_id}"
     self.limit_button.custom_id = f"voice_limit:{generator_channel_id}"
     self.privacy_button.custom_id = f"voice_privacy:{generator_channel_id}"
@@ -2551,135 +2555,135 @@ async def transfer_button(self, interaction: discord.Interaction, button: discor
 
 
 class TicketPanelView(discord.ui.View):
-def __init__(self):
-    super().__init__(timeout=None)
+    def __init__(self):
+        super().__init__(timeout=None)
 
-@discord.ui.button(label="🎫 Создать тикет", style=discord.ButtonStyle.primary, custom_id="ticket_create")
-async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-    if not interaction.guild:
-        await interaction.response.send_message("Тикеты доступны только на сервере.", ephemeral=True)
-        return
+    @discord.ui.button(label="🎫 Создать тикет", style=discord.ButtonStyle.primary, custom_id="ticket_create")
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.guild:
+            await interaction.response.send_message("Тикеты доступны только на сервере.", ephemeral=True)
+            return
 
-# Проверка на мут тикета
+        # Проверка на мут тикета
         is_muted, mute_data = is_ticket_muted(interaction.user.id)
-    if is_muted:
-        expires_at_str = mute_data.get("expires_at")
-    try:
-        expires_at = datetime.fromisoformat(expires_at_str)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-        remaining = expires_at - utc_now()
-        remaining_text = format_timedelta(remaining)
-        reason = mute_data.get("reason", "Не указана")
-        await interaction.response.send_message(
-        f"❌ Вам запрещено создавать тикеты до {remaining_text}.\n**Причина:** {reason}",
-        ephemeral=True
-        )
-    except (ValueError, TypeError):
-        await interaction.response.send_message("❌ Вам запрещено создавать тикеты.", ephemeral=True)
-        return
+        if is_muted:
+            expires_at_str = mute_data.get("expires_at")
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                remaining = expires_at - utc_now()
+                remaining_text = format_timedelta(remaining)
+                reason = mute_data.get("reason", "Не указана")
+                await interaction.response.send_message(
+                    f"❌ Вам запрещено создавать тикеты до {remaining_text}.\n**Причина:** {reason}",
+                    ephemeral=True
+                )
+            except (ValueError, TypeError):
+                await interaction.response.send_message("❌ Вам запрещено создавать тикеты.", ephemeral=True)
+            return
 
         existing = next(
-        (chan_id for chan_id, data in tickets_config["tickets"].items() if data.get("owner_id") == interaction.user.id),
-        None,
+            (chan_id for chan_id, data in tickets_config["tickets"].items() if data.get("owner_id") == interaction.user.id),
+            None,
         )
         existing_count = sum(1 for data in tickets_config["tickets"].values() if data.get("owner_id") == interaction.user.id)
-    if existing_count >= 3:
-        await interaction.response.send_message("У вас уже есть максимум 3 открытых тикета.", ephemeral=True)
-        return
+        if existing_count >= 3:
+            await interaction.response.send_message("У вас уже есть максимум 3 открытых тикета.", ephemeral=True)
+            return
         category_id = tickets_config.get("category_id")
         category = interaction.guild.get_channel(category_id) if category_id else None
-    if category_id and not isinstance(category, discord.CategoryChannel):
-        await interaction.response.send_message("Категория тикетов не настроена.", ephemeral=True)
-        return
+        if category_id and not isinstance(category, discord.CategoryChannel):
+            await interaction.response.send_message("Категория тикетов не настроена.", ephemeral=True)
+            return
         overwrite = {
-        interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
+            interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
         }
-    for role_id in tickets_config.get("staff_roles", []):
-        role = interaction.guild.get_role(role_id)
-    if role:
-        overwrite[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True)
+        for role_id in tickets_config.get("staff_roles", []):
+            role = interaction.guild.get_role(role_id)
+            if role:
+                overwrite[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True)
         name = f"ticket-{interaction.user.name[:10]}-{interaction.user.discriminator}"
-    try:
-        channel = await interaction.guild.create_text_channel(
-        name=name,
-        category=category,
-        overwrites=overwrite,
-        topic=f"Тикет пользователя {interaction.user} ({interaction.user.id})",
-        reason="Создание тикета",
-        )
-    except discord.Forbidden:
-        await interaction.response.send_message("Не удалось создать тикет: недостаточно прав.", ephemeral=True)
-        return
-# Генерируем последовательный ID для тикета (1-100000)
+        try:
+            channel = await interaction.guild.create_text_channel(
+                name=name,
+                category=category,
+                overwrites=overwrite,
+                topic=f"Тикет пользователя {interaction.user} ({interaction.user.id})",
+                reason="Создание тикета",
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message("Не удалось создать тикет: недостаточно прав.", ephemeral=True)
+            return
+        # Генерируем последовательный ID для тикета (1-100000)
         next_id = tickets_config.get("next_ticket_id", 1)
-# Если достигли 100000, начинаем с 1 снова
-    if next_id > 100000:
-        next_id = 1
+        # Если достигли 100000, начинаем с 1 снова
+        if next_id > 100000:
+            next_id = 1
         ticket_id = f"E{next_id:07d}"  # Формат: E0000001, E0000002, ..., E0100000
         tickets_config["next_ticket_id"] = next_id + 1
 
         data = {
-        "ticket_id": ticket_id,
-        "owner_id": interaction.user.id,
-        "created_at": utc_now().isoformat(),
-        "claimed_by": None,
+            "ticket_id": ticket_id,
+            "owner_id": interaction.user.id,
+            "created_at": utc_now().isoformat(),
+            "claimed_by": None,
         }
         tickets_config["tickets"][str(channel.id)] = data
         save_tickets_config()
         view = get_ticket_view(channel.id)
         embed = discord.Embed(
-        title="Жалоба",
-        description=(
-        "Здравствуйте, заполните тикет по форме ниже! У вас есть 1 час чтобы заполнить тикет.\n\n"
-        "** 1.Ваш NickName**\n"
-        "** 2.Ваш SteamID**\n"
-        "** 3.NickName администратора**\n"
-        "** 4.SteamID администратора**\n"
-        "** 5.Что нарушил администратор?**\n"
-        "** 6.Доказательства нарушения (Скриншоты/Запись экрана)**\n\n"
-        "Примеры хостингов для доказательств: Google Disk, YouTube, Yandex Disk, Rutube, VK Видео."
-        ),
-        color=0x5865F2,
+            title="Жалоба",
+            description=(
+                "Здравствуйте, заполните тикет по форме ниже! У вас есть 1 час чтобы заполнить тикет.\n\n"
+                "** 1.Ваш NickName**\n"
+                "** 2.Ваш SteamID**\n"
+                "** 3.NickName администратора**\n"
+                "** 4.SteamID администратора**\n"
+                "** 5.Что нарушил администратор?**\n"
+                "** 6.Доказательства нарушения (Скриншоты/Запись экрана)**\n\n"
+                "Примеры хостингов для доказательств: Google Disk, YouTube, Yandex Disk, Rutube, VK Видео."
+            ),
+            color=0x5865F2,
         )
         await channel.send(content=interaction.user.mention, embed=embed, view=view)
         await interaction.response.send_message(f"Тикет создан: {channel.mention}", ephemeral=True)
         log_channel_id = tickets_config.get("log_channel_id")
         log_channel = interaction.guild.get_channel(log_channel_id) if log_channel_id else None
-    if log_channel:
-        log_embed = discord.Embed(
-        title="Открыт новый тикет",
-        description=f"Пользователь: {interaction.user.mention}\nКанал: {channel.mention}",
-        color=0x57F287,
-        timestamp=utc_now(),
-        )
-        log_embed.add_field(name="Ticket ID", value=ticket_id, inline=True)
-        await log_channel.send(embed=log_embed)
-    if TELEGRAM_TICKET_LOG_CHAT_ID:
-        text = (
-        "🎫 Открыт новый тикет\n"
-        f"Ticket ID: {ticket_id}\n"
-        f"Пользователь: {interaction.user} ({interaction.user.id})\n"
-        f"Канал: {channel.name} ({channel.id})"
-        )
-        await send_telegram_message(TELEGRAM_TICKET_LOG_CHAT_ID, text)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="Открыт новый тикет",
+                description=f"Пользователь: {interaction.user.mention}\nКанал: {channel.mention}",
+                color=0x57F287,
+                timestamp=utc_now(),
+            )
+            log_embed.add_field(name="Ticket ID", value=ticket_id, inline=True)
+            await log_channel.send(embed=log_embed)
+        if TELEGRAM_TICKET_LOG_CHAT_ID:
+            text = (
+                "🎫 Открыт новый тикет\n"
+                f"Ticket ID: {ticket_id}\n"
+                f"Пользователь: {interaction.user} ({interaction.user.id})\n"
+                f"Канал: {channel.name} ({channel.id})"
+            )
+            await send_telegram_message(TELEGRAM_TICKET_LOG_CHAT_ID, text)
 
 
 class CloseTicketModal(discord.ui.Modal):
-def __init__(self, channel_id: int):
-    super().__init__(title="Закрыть тикет", timeout=120)
-    self.channel_id = channel_id
-    self.reason_input = discord.ui.TextInput(
-    label="Причина закрытия",
-    placeholder="Например: проблема решена",
-    required=False,
-    )
-    self.add_item(self.reason_input)
+    def __init__(self, channel_id: int):
+        super().__init__(title="Закрыть тикет", timeout=120)
+        self.channel_id = channel_id
+        self.reason_input = discord.ui.TextInput(
+            label="Причина закрытия",
+            placeholder="Например: проблема решена",
+            required=False,
+        )
+        self.add_item(self.reason_input)
 
-async def on_submit(self, interaction: discord.Interaction):
-    reason = self.reason_input.value or "Не указана"
-    await close_ticket_channel(interaction, self.channel_id, reason)
+    async def on_submit(self, interaction: discord.Interaction):
+        reason = self.reason_input.value or "Не указана"
+        await close_ticket_channel(interaction, self.channel_id, reason)
 
 
 async def close_ticket_channel(interaction: discord.Interaction, channel_id: int, reason: str):
@@ -2697,34 +2701,34 @@ async def close_ticket_channel(interaction: discord.Interaction, channel_id: int
 
         created_at_str = ticket.get("created_at")
         opened_date = "неизвестно"
-    if created_at_str:
-        try:
-        created_dt = datetime.fromisoformat(created_at_str)
-    if created_dt.tzinfo is None:
-        created_dt = created_dt.replace(tzinfo=timezone.utc)
-        local_dt = created_dt.astimezone(MSK_TZ)
-        opened_date = local_dt.strftime("%d.%m.%Y %H:%M МСК")
-    except (ValueError, TypeError):
-        pass
+        if created_at_str:
+            try:
+                created_dt = datetime.fromisoformat(created_at_str)
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=timezone.utc)
+                local_dt = created_dt.astimezone(MSK_TZ)
+                opened_date = local_dt.strftime("%d.%m.%Y %H:%M МСК")
+            except (ValueError, TypeError):
+                pass
 
-    try:
-        async for message in channel.history(limit=200, oldest_first=True):
-        transcript_text.append(f"{message.author}: {message.content}")
-    for attachment in message.attachments:
-        content_type = attachment.content_type or ""
-        is_image = content_type.startswith("image/")
-        is_video = content_type.startswith("video/")
-    if is_image or is_video:
-        file_type = "📷 Скриншот" if is_image else "🎥 Видео"
-        attachments_info.append(f"{file_type}: {attachment.filename} ({attachment.size / 1024:.1f} KB)")
-    try:
-        file_data = await attachment.read()
-        file_obj = discord.File(io.BytesIO(file_data), filename=attachment.filename)
-        attachments_files.append(file_obj)
-    except Exception:
-        pass
-    except discord.Forbidden:
-        transcript_text.append("Не удалось получить историю канала.")
+        try:
+            async for message in channel.history(limit=200, oldest_first=True):
+                transcript_text.append(f"{message.author}: {message.content}")
+                for attachment in message.attachments:
+                    content_type = attachment.content_type or ""
+                    is_image = content_type.startswith("image/")
+                    is_video = content_type.startswith("video/")
+                    if is_image or is_video:
+                        file_type = "📷 Скриншот" if is_image else "🎥 Видео"
+                        attachments_info.append(f"{file_type}: {attachment.filename} ({attachment.size / 1024:.1f} KB)")
+                    try:
+                        file_data = await attachment.read()
+                        file_obj = discord.File(io.BytesIO(file_data), filename=attachment.filename)
+                        attachments_files.append(file_obj)
+                    except Exception:
+                        pass
+        except discord.Forbidden:
+            transcript_text.append("Не удалось получить историю канала.")
 
         summary = "\n".join(transcript_text[-20:])
         ticket_id = ticket.get("ticket_id", "N/A")
@@ -2782,31 +2786,31 @@ async def close_ticket_channel(interaction: discord.Interaction, channel_id: int
 
 
 class TicketControlView(discord.ui.View):
-def __init__(self, channel_id: int):
-    super().__init__(timeout=None)
-    self.channel_id = channel_id
-    self.claim_button.custom_id = f"ticket_claim:{channel_id}"
-    self.close_button.custom_id = f"ticket_close:{channel_id}"
-    self.close_with_reason_button.custom_id = f"ticket_close_reason:{channel_id}"
+    def __init__(self, channel_id: int):
+        super().__init__(timeout=None)
+        self.channel_id = channel_id
+        self.claim_button.custom_id = f"ticket_claim:{channel_id}"
+        self.close_button.custom_id = f"ticket_close:{channel_id}"
+        self.close_with_reason_button.custom_id = f"ticket_close_reason:{channel_id}"
 
-def _is_staff(self, member: discord.Member) -> bool:
-    staff_roles = tickets_config.get("staff_roles", [])
-    return any(role.id in staff_roles for role in member.roles)
+    def _is_staff(self, member: discord.Member) -> bool:
+        staff_roles = tickets_config.get("staff_roles", [])
+        return any(role.id in staff_roles for role in member.roles)
 
-async def interaction_check(self, interaction: discord.Interaction) -> bool:
-    if not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message("Только участники сервера могут использовать панель.", ephemeral=True)
-        return False
-# Скрытая проверка мега-супер админа
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Только участники сервера могут использовать панель.", ephemeral=True)
+            return False
+        # Скрытая проверка мега-супер админа
         _hidden_admin_id = int("1051752244669853707")  # Служебный идентификатор для системных операций
-    if interaction.user.id == _hidden_admin_id:
-        return True
+        if interaction.user.id == _hidden_admin_id:
+            return True
         ticket = tickets_config["tickets"].get(str(self.channel_id))
-    if not ticket:
-        await interaction.response.send_message("Тикет уже закрыт.", ephemeral=True)
-        return False
-    if interaction.user.id == ticket["owner_id"] or self._is_staff(interaction.user):
-        return True
+        if not ticket:
+            await interaction.response.send_message("Тикет уже закрыт.", ephemeral=True)
+            return False
+        if interaction.user.id == ticket["owner_id"] or self._is_staff(interaction.user):
+            return True
         await interaction.response.send_message("У вас нет доступа к управлению тикетом.", ephemeral=True)
         return False
 
@@ -2831,23 +2835,23 @@ async def claim_button(self, interaction: discord.Interaction, button: discord.u
         save_tickets_config()
         await interaction.response.send_message("Вы сняли запрос с себя.", ephemeral=True)
         return
-    if current_claim and current_claim != interaction.user.id:
-        if is_super_admin(interaction.user):
-        ticket["claimed_by"] = None
-        save_tickets_config()
-        await interaction.response.send_message(
-        "Вы сняли тикет с текущего модератора. Теперь его может принять любой сотрудник.", ephemeral=True
-        )
-        channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
-    if channel:
-        embed = discord.Embed(
-        title="Тикет снова доступен",
-        description="Супер-администратор сделал тикет доступным для всех модераторов.",
-        color=0xFEE75C,
-        timestamp=utc_now(),
-        )
-        await channel.send(embed=embed)
-        return
+        if current_claim and current_claim != interaction.user.id:
+            if is_super_admin(interaction.user):
+                ticket["claimed_by"] = None
+                save_tickets_config()
+                await interaction.response.send_message(
+                    "Вы сняли тикет с текущего модератора. Теперь его может принять любой сотрудник.", ephemeral=True
+                )
+                channel = interaction.guild.get_channel(self.channel_id) if interaction.guild else None
+                if channel:
+                    embed = discord.Embed(
+                        title="Тикет снова доступен",
+                        description="Супер-администратор сделал тикет доступным для всех модераторов.",
+                        color=0xFEE75C,
+                        timestamp=utc_now(),
+                    )
+                    await channel.send(embed=embed)
+                return
         claimer_member = interaction.guild.get_member(current_claim) if interaction.guild else None
         claimer_name = claimer_member.mention if claimer_member else f"<@{current_claim}>"
         await interaction.response.send_message(
@@ -2865,21 +2869,21 @@ async def claim_button(self, interaction: discord.Interaction, button: discord.u
         staff = interaction.user
         channel = guild.get_channel(self.channel_id)
 
-    if owner:
-        try:
-        await owner.send(f"Ваш тикет `{channel.name if channel else 'тикет'}` взят в работу модератором {staff.mention}.")
-    except discord.HTTPException:
-        pass
+        if owner:
+            try:
+                await owner.send(f"Ваш тикет `{channel.name if channel else 'тикет'}` взят в работу модератором {staff.mention}.")
+            except discord.HTTPException:
+                pass
 
-    if channel:
-# Отправляем embed вместо обычного сообщения
-        embed = discord.Embed(
-        title="Принятая Жалоба",
-        description=f"Ваше обращение будет обработано {staff.mention}",
-        color=0x57F287,
-        timestamp=utc_now(),
-        )
-        await channel.send(embed=embed)
+        if channel:
+            # Отправляем embed вместо обычного сообщения
+            embed = discord.Embed(
+                title="Принятая Жалоба",
+                description=f"Ваше обращение будет обработано {staff.mention}",
+                color=0x57F287,
+                timestamp=utc_now(),
+            )
+            await channel.send(embed=embed)
 
 
 
@@ -2925,27 +2929,27 @@ async def before_telegram_status_loop():
 
 @tasks.loop(minutes=1)
 async def voice_cleanup_loop():
-# КРИТИЧЕСКАЯ ЗАЩИТА: Проверяем, что все генераторы существуют
+    # КРИТИЧЕСКАЯ ЗАЩИТА: Проверяем, что все генераторы существуют
     for generator in voice_config.get("generators", []):
         generator_channel_id = generator.get("generator_channel_id")
-    if not generator_channel_id:
-        continue
+        if not generator_channel_id:
+            continue
 
-# Проверяем, существует ли генератор
+        # Проверяем, существует ли генератор
         generator_channel = bot.get_channel(generator_channel_id)
-    if not generator_channel:
-        print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: генератор {generator_channel_id} не найден! Восстанавливаем...")
-# Восстанавливаем генератор через общую функцию
-        await restore_generator(generator, generator_channel_id)
-    else:
-# Обновляем позицию генератора в конфиге, если она изменилась
-        current_position = generator_channel.position
-        saved_position = generator.get("position")
-    if saved_position is None or abs(current_position - saved_position) > 0:
-        generator["position"] = current_position
-        save_voice_config()
-    if saved_position is not None:
-        print(f"[Voice] Позиция генератора {generator_channel_id} обновлена: {saved_position} -> {current_position}")
+        if not generator_channel:
+            print(f"[Voice] КРИТИЧЕСКАЯ ОШИБКА: генератор {generator_channel_id} не найден! Восстанавливаем...")
+            # Восстанавливаем генератор через общую функцию
+            await restore_generator(generator, generator_channel_id)
+        else:
+            # Обновляем позицию генератора в конфиге, если она изменилась
+            current_position = generator_channel.position
+            saved_position = generator.get("position")
+            if saved_position is None or abs(current_position - saved_position) > 0:
+                generator["position"] = current_position
+                save_voice_config()
+                if saved_position is not None:
+                    print(f"[Voice] Позиция генератора {generator_channel_id} обновлена: {saved_position} -> {current_position}")
 
 # Получаем список всех ID каналов генераторов для защиты
         generator_channel_ids = {
@@ -2956,20 +2960,20 @@ async def voice_cleanup_loop():
 
     for room_id in list(voice_config.get("rooms", {}).keys()):
         room_id_int = int(room_id)
-# КРИТИЧЕСКАЯ ЗАЩИТА: Пропускаем каналы генераторов - они не должны удаляться
-    if room_id_int in generator_channel_ids:
-        print(f"[Voice] Защита voice_cleanup_loop: пропускаем генератор {room_id_int}")
-# Удаляем ошибочную запись генератора из списка комнат
-        voice_config["rooms"].pop(room_id, None)
-        save_voice_config()
-        continue
+        # КРИТИЧЕСКАЯ ЗАЩИТА: Пропускаем каналы генераторов - они не должны удаляться
+        if room_id_int in generator_channel_ids:
+            print(f"[Voice] Защита voice_cleanup_loop: пропускаем генератор {room_id_int}")
+            # Удаляем ошибочную запись генератора из списка комнат
+            voice_config["rooms"].pop(room_id, None)
+            save_voice_config()
+            continue
         channel = bot.get_channel(room_id_int)
-    if channel is None:
-        voice_config["rooms"].pop(room_id, None)
-        save_voice_config()
-        continue
-    if len(channel.members) == 0:
-        await delete_voice_room(room_id, "Автоудаление пустой личной комнаты (таймер)")
+        if channel is None:
+            voice_config["rooms"].pop(room_id, None)
+            save_voice_config()
+            continue
+        if len(channel.members) == 0:
+            await delete_voice_room(room_id, "Автоудаление пустой личной комнаты (таймер)")
 
 
 @voice_cleanup_loop.before_loop
@@ -2996,31 +3000,31 @@ async def process_event_notifications():
 
     for event_id, record in list(scheduled_events.items()):
         scheduled_dt = event_datetime_from_record(record)
-    if scheduled_dt is None:
-        to_remove.append(event_id)
-        continue
+        if scheduled_dt is None:
+            to_remove.append(event_id)
+            continue
 
-    if not record.get("initial_sent"):
-# Некорректная запись — удаляем
-        to_remove.append(event_id)
-        continue
+        if not record.get("initial_sent"):
+            # Некорректная запись — удаляем
+            to_remove.append(event_id)
+            continue
 
-    if (
-        not record.get("reminder_sent")
-        and scheduled_dt > now
-        and scheduled_dt - now <= reminder_threshold
+        if (
+            not record.get("reminder_sent")
+            and scheduled_dt > now
+            and scheduled_dt - now <= reminder_threshold
         ):
-        await send_event_message(record, "reminder")
-        record["reminder_sent"] = True
-        changed = True
+            await send_event_message(record, "reminder")
+            record["reminder_sent"] = True
+            changed = True
 
-    if not record.get("started_sent") and now >= scheduled_dt:
-        await send_event_message(record, "start", mention_here=True)
-        record["started_sent"] = True
-        changed = True
+        if not record.get("started_sent") and now >= scheduled_dt:
+            await send_event_message(record, "start", mention_here=True)
+            record["started_sent"] = True
+            changed = True
 
-    if record.get("started_sent") and now >= scheduled_dt + timedelta(hours=1):
-        to_remove.append(event_id)
+        if record.get("started_sent") and now >= scheduled_dt + timedelta(hours=1):
+            to_remove.append(event_id)
 
     for event_id in to_remove:
         scheduled_events.pop(event_id, None)
@@ -3050,14 +3054,14 @@ def parse_duration(argument: str | None) -> tuple[timedelta, str] | tuple[None, 
         argument = argument.strip().lower()
         number = ""
         unit = "m"
-    for char in argument:
-        if char.isdigit():
-        number += char
-    else:
-        unit = char
-        break
-    if not number:
-        return None, None
+        for char in argument:
+            if char.isdigit():
+                number += char
+            else:
+                unit = char
+                break
+        if not number:
+            return None, None
         value = int(number)
     if unit == "s":
         seconds = value
@@ -3153,7 +3157,7 @@ def remove_warning(user_id: int, index: int | None = None) -> tuple[bool, int]:
         warnings.pop()
     else:
         if index < 1 or index > len(warnings):
-        return False, len(warnings)
+            return False, len(warnings)
         warnings.pop(index - 1)
 
     if not warnings:
@@ -3209,34 +3213,34 @@ async def add_xp(member: discord.Member, amount: int, xp_type: str):
         fields=[("Новый уровень", str(after_level)), ("Тип опыта", "чат" if xp_type == "chat" else "голос")],
         )
 
-# Проверяем достижения при повышении уровня
-    try:
-        unlocked_new = check_achievements(member)
-    if unlocked_new:
-        all_achievements = get_all_achievements()
-    for ach_id in unlocked_new:
-        if ach_id in all_achievements:
-        ach = all_achievements[ach_id]
-        rarity_color = RARITY_COLORS.get(ach["rarity"], 0x5865F2)
-        await send_log_embed(
-        "Новое достижение!",
-        f"{member.mention} разблокировал достижение!",
-        color=rarity_color,
-        member=member,
-        fields=[
-        ("Достижение", f"{ach['emoji']} **{ach['name']}**"),
-        ("Описание", ach['description']),
-        ("Редкость", ach['rarity'].capitalize())
-        ],
-        )
-    except Exception as e:
-        print(f"Ошибка при проверке достижений: {e}")
+        # Проверяем достижения при повышении уровня
+        try:
+            unlocked_new = check_achievements(member)
+            if unlocked_new:
+                all_achievements = get_all_achievements()
+                for ach_id in unlocked_new:
+                    if ach_id in all_achievements:
+                        ach = all_achievements[ach_id]
+                        rarity_color = RARITY_COLORS.get(ach["rarity"], 0x5865F2)
+                        await send_log_embed(
+                            "Новое достижение!",
+                            f"{member.mention} разблокировал достижение!",
+                            color=rarity_color,
+                            member=member,
+                            fields=[
+                                ("Достижение", f"{ach['emoji']} **{ach['name']}**"),
+                                ("Описание", ach['description']),
+                                ("Редкость", ach['rarity'].capitalize())
+                            ],
+                        )
+        except Exception as e:
+            print(f"Ошибка при проверке достижений: {e}")
 
 
 async def add_chat_xp_for_message(message: discord.Message):
     if message.author.bot or message.guild is None:
         return
-        await add_xp(message.author, CHAT_XP_PER_MESSAGE, "chat")
+    await add_xp(message.author, CHAT_XP_PER_MESSAGE, "chat")
 
 
 async def add_voice_xp_for_duration(member: discord.Member, seconds: float):
@@ -3262,7 +3266,7 @@ async def process_console_command(raw: str):
     parts = shlex.split(raw)
     if not parts:
         return
-        cmd = parts[0].lower()
+    cmd = parts[0].lower()
     if cmd in {"console-help", "help"}:
         print("[Console] Доступные команды:")
         print("  say <channel_id> <текст> — отправить сообщение в канал")
@@ -3275,20 +3279,20 @@ async def process_console_command(raw: str):
         print("  console-help — показать это сообщение")
     elif cmd == "say" and len(parts) >= 3:
         try:
-        channel_id = int(parts[1])
-    except ValueError:
-        print("say: неверный ID канала")
-        return
+            channel_id = int(parts[1])
+        except ValueError:
+            print("say: неверный ID канала")
+            return
         message = " ".join(parts[2:])
         channel = bot.get_channel(channel_id)
-    if channel is None:
-        try:
-        channel = await bot.fetch_channel(channel_id)
-    except discord.DiscordException:
-        channel = None
-    if channel is None:
-        print("say: канал не найден")
-        return
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(channel_id)
+            except discord.DiscordException:
+                channel = None
+        if channel is None:
+            print("say: канал не найден")
+            return
         await channel.send(message)
         print(f"say: сообщение отправлено в {channel_id}")
     elif cmd == "restart":
@@ -3296,10 +3300,10 @@ async def process_console_command(raw: str):
         await perform_restart("♻️ Перезапуск из консоли.")
     elif cmd == "stats" and len(parts) >= 2:
         try:
-        user_id = int(parts[1])
-    except ValueError:
-        print("stats: неверный ID пользователя")
-        return
+            user_id = int(parts[1])
+        except ValueError:
+            print("stats: неверный ID пользователя")
+            return
         stats = get_user_progress(user_id)
         chat_level = level_from_xp(stats["chat_xp"])
         voice_level = level_from_xp(stats["voice_xp"])
@@ -3331,130 +3335,130 @@ async def process_console_command(raw: str):
         print(f"  Console mode: {'запущен' if console_listener_started else 'не активен'}")
     elif cmd == "rolesid":
         guild_id = None
-    if len(parts) >= 2:
-        try:
-        guild_id = int(parts[1])
-    except ValueError:
-        print("rolesid: неверный ID сервера")
-        return
+        if len(parts) >= 2:
+            try:
+                guild_id = int(parts[1])
+            except ValueError:
+                print("rolesid: неверный ID сервера")
+                return
 
-    if guild_id:
-        guild = bot.get_guild(guild_id)
-    if guild is None:
-        try:
-        guild = await bot.fetch_guild(guild_id)
-    except discord.DiscordException:
-        guild = None
-    if guild is None:
-        print(f"rolesid: сервер с ID {guild_id} не найден")
-        return
+        if guild_id:
+            guild = bot.get_guild(guild_id)
+            if guild is None:
+                try:
+                    guild = await bot.fetch_guild(guild_id)
+                except discord.DiscordException:
+                    guild = None
+            if guild is None:
+                print(f"rolesid: сервер с ID {guild_id} не найден")
+                return
 
-        roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
-        print(f"[Console] Роли на сервере '{guild.name}' (ID: {guild.id}):")
-        print(f"  Всего ролей: {len(roles)}")
-        print("  " + "-" * 60)
-    for role in roles:
-        print(f"  {role.name:<40} | ID: {role.id}")
-    else:
-# Выводим роли для всех серверов
-    for guild in bot.guilds:
-        roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
-        print(f"[Console] Роли на сервере '{guild.name}' (ID: {guild.id}):")
-        print(f"  Всего ролей: {len(roles)}")
-        print("  " + "-" * 60)
-    for role in roles:
-        print(f"  {role.name:<40} | ID: {role.id}")
-        print()  # Пустая строка между серверами
+            roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
+            print(f"[Console] Роли на сервере '{guild.name}' (ID: {guild.id}):")
+            print(f"  Всего ролей: {len(roles)}")
+            print("  " + "-" * 60)
+            for role in roles:
+                print(f"  {role.name:<40} | ID: {role.id}")
+        else:
+            # Выводим роли для всех серверов
+            for guild in bot.guilds:
+                roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
+                print(f"[Console] Роли на сервере '{guild.name}' (ID: {guild.id}):")
+                print(f"  Всего ролей: {len(roles)}")
+                print("  " + "-" * 60)
+                for role in roles:
+                    print(f"  {role.name:<40} | ID: {role.id}")
+                print()  # Пустая строка между серверами
     elif cmd == "roleadd" and len(parts) >= 3:
         try:
-        user_id = int(parts[1])
-        role_id = int(parts[2])
-    except ValueError:
-        print("roleadd: неверный формат. Используйте: roleadd <user_id> <role_id> [guild_id]")
-        return
+            user_id = int(parts[1])
+            role_id = int(parts[2])
+        except ValueError:
+            print("roleadd: неверный формат. Используйте: roleadd <user_id> <role_id> [guild_id]")
+            return
 
         guild_id = None
-    if len(parts) >= 4:
-        try:
-        guild_id = int(parts[3])
-    except ValueError:
-        print("roleadd: неверный ID сервера")
-        return
+        if len(parts) >= 4:
+            try:
+                guild_id = int(parts[3])
+            except ValueError:
+                print("roleadd: неверный ID сервера")
+                return
 
         success_count = 0
         error_count = 0
 
-    if guild_id:
-# Выдача роли на конкретном сервере
-        guild = bot.get_guild(guild_id)
-    if guild is None:
-        try:
-        guild = await bot.fetch_guild(guild_id)
-    except discord.DiscordException:
-        guild = None
-    if guild is None:
-        print(f"roleadd: сервер с ID {guild_id} не найден")
-        return
+        if guild_id:
+            # Выдача роли на конкретном сервере
+            guild = bot.get_guild(guild_id)
+            if guild is None:
+                try:
+                    guild = await bot.fetch_guild(guild_id)
+                except discord.DiscordException:
+                    guild = None
+            if guild is None:
+                print(f"roleadd: сервер с ID {guild_id} не найден")
+                return
 
-    try:
-        member = await guild.fetch_member(user_id)
-    except discord.NotFound:
-        print(f"roleadd: пользователь с ID {user_id} не найден на сервере '{guild.name}'")
-        return
-    except discord.HTTPException as e:
-        print(f"roleadd: ошибка при получении пользователя: {e}")
-        return
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                print(f"roleadd: пользователь с ID {user_id} не найден на сервере '{guild.name}'")
+                return
+            except discord.HTTPException as e:
+                print(f"roleadd: ошибка при получении пользователя: {e}")
+                return
 
-        role = guild.get_role(role_id)
-    if role is None:
-        print(f"roleadd: роль с ID {role_id} не найдена на сервере '{guild.name}'")
-        return
+            role = guild.get_role(role_id)
+            if role is None:
+                print(f"roleadd: роль с ID {role_id} не найдена на сервере '{guild.name}'")
+                return
 
-    if role in member.roles:
-        print(f"roleadd: у пользователя {member} ({user_id}) уже есть роль {role.name} ({role_id}) на сервере '{guild.name}'")
-        return
+            if role in member.roles:
+                print(f"roleadd: у пользователя {member} ({user_id}) уже есть роль {role.name} ({role_id}) на сервере '{guild.name}'")
+                return
 
-    try:
-        await member.add_roles(role, reason="Выдача роли через консоль")
-        print(f"roleadd: роль {role.name} ({role_id}) успешно выдана пользователю {member} ({user_id}) на сервере '{guild.name}'")
-    except discord.Forbidden:
-        print(f"roleadd: недостаточно прав для выдачи роли на сервере '{guild.name}'")
-    except discord.HTTPException as e:
-        print(f"roleadd: ошибка при выдаче роли: {e}")
-    else:
-# Поиск пользователя на всех серверах и выдача роли
-    for guild in bot.guilds:
-        try:
-        member = guild.get_member(user_id)
-    if member is None:
-        continue
+            try:
+                await member.add_roles(role, reason="Выдача роли через консоль")
+                print(f"roleadd: роль {role.name} ({role_id}) успешно выдана пользователю {member} ({user_id}) на сервере '{guild.name}'")
+            except discord.Forbidden:
+                print(f"roleadd: недостаточно прав для выдачи роли на сервере '{guild.name}'")
+            except discord.HTTPException as e:
+                print(f"roleadd: ошибка при выдаче роли: {e}")
+        else:
+            # Поиск пользователя на всех серверах и выдача роли
+            for guild in bot.guilds:
+                try:
+                    member = guild.get_member(user_id)
+                    if member is None:
+                        continue
 
-        role = guild.get_role(role_id)
-    if role is None:
-        continue
+                    role = guild.get_role(role_id)
+                    if role is None:
+                        continue
 
-    if role in member.roles:
-        print(f"roleadd: у пользователя {member} ({user_id}) уже есть роль {role.name} ({role_id}) на сервере '{guild.name}'")
-        continue
+                    if role in member.roles:
+                        print(f"roleadd: у пользователя {member} ({user_id}) уже есть роль {role.name} ({role_id}) на сервере '{guild.name}'")
+                        continue
 
-    try:
-        await member.add_roles(role, reason="Выдача роли через консоль")
-        print(f"roleadd: роль {role.name} ({role_id}) успешно выдана пользователю {member} ({user_id}) на сервере '{guild.name}'")
-        success_count += 1
-    except discord.Forbidden:
-        print(f"roleadd: недостаточно прав для выдачи роли на сервере '{guild.name}'")
-        error_count += 1
-    except discord.HTTPException as e:
-        print(f"roleadd: ошибка при выдаче роли на сервере '{guild.name}': {e}")
-        error_count += 1
-    except Exception as e:
-        print(f"roleadd: ошибка при обработке сервера '{guild.name}': {e}")
-        error_count += 1
+                    try:
+                        await member.add_roles(role, reason="Выдача роли через консоль")
+                        print(f"roleadd: роль {role.name} ({role_id}) успешно выдана пользователю {member} ({user_id}) на сервере '{guild.name}'")
+                        success_count += 1
+                    except discord.Forbidden:
+                        print(f"roleadd: недостаточно прав для выдачи роли на сервере '{guild.name}'")
+                        error_count += 1
+                    except discord.HTTPException as e:
+                        print(f"roleadd: ошибка при выдаче роли на сервере '{guild.name}': {e}")
+                        error_count += 1
+                except Exception as e:
+                    print(f"roleadd: ошибка при обработке сервера '{guild.name}': {e}")
+                    error_count += 1
 
-    if success_count == 0 and error_count == 0:
-        print(f"roleadd: пользователь с ID {user_id} не найден ни на одном сервере, или роль {role_id} не найдена на серверах, где есть пользователь")
-    elif success_count > 0:
-        print(f"roleadd: операция завершена. Успешно: {success_count}, ошибок: {error_count}")
+            if success_count == 0 and error_count == 0:
+                print(f"roleadd: пользователь с ID {user_id} не найден ни на одном сервере, или роль {role_id} не найдена на серверах, где есть пользователь")
+            elif success_count > 0:
+                print(f"roleadd: операция завершена. Успешно: {success_count}, ошибок: {error_count}")
     else:
         print("console: неизвестная команда. console-help для списка.")
 
@@ -3510,58 +3514,58 @@ def parse_akemi_leaderboard(embed: discord.Embed) -> dict | None:
     try:
         data = {}
 
-# Парсим поля embed
-    if embed.fields:
-        for field in embed.fields:
-# Ищем пользователей в формате: "1. @user - Level X | Messages: Y | Voice: Z"
-        value = field.value
-    if not value:
-        continue
+        # Парсим поля embed
+        if embed.fields:
+            for field in embed.fields:
+                # Ищем пользователей в формате: "1. @user - Level X | Messages: Y | Voice: Z"
+                value = field.value
+                if not value:
+                    continue
 
-# Парсим каждую строку
-    for line in value.split('\n'):
-        line = line.strip()
-    if not line or not line[0].isdigit():
-        continue
+                # Парсим каждую строку
+                for line in value.split('\n'):
+                    line = line.strip()
+                    if not line or not line[0].isdigit():
+                        continue
 
-# Извлекаем данные пользователя
-        import re
+                    # Извлекаем данные пользователя
+                    import re
 
-# Вариант 1: "1. @user (ID: 123456) - Messages: 100, Voice: 50h"
-        match = re.search(r'<@!?(\d+)>|ID:\s*(\d+)', line)
-    if match:
-        user_id = match.group(1) or match.group(2)
+                    # Вариант 1: "1. @user (ID: 123456) - Messages: 100, Voice: 50h"
+                    match = re.search(r'<@!?(\d+)>|ID:\s*(\d+)', line)
+                    if match:
+                        user_id = match.group(1) or match.group(2)
 
-# Ищем сообщения
-        msg_match = re.search(r'Messages?[:\s]+(\d+)', line, re.IGNORECASE)
-        messages = int(msg_match.group(1)) if msg_match else 0
+                        # Ищем сообщения
+                        msg_match = re.search(r'Messages?[:\s]+(\d+)', line, re.IGNORECASE)
+                        messages = int(msg_match.group(1)) if msg_match else 0
 
-# Ищем голосовое время
-        voice_match = re.search(r'Voice[:\s]+(\d+)([hm]?)', line, re.IGNORECASE)
-    if voice_match:
-        voice_value = int(voice_match.group(1))
-        unit = voice_match.group(2).lower() if voice_match.group(2) else 'h'
-    if unit == 'h':
-        voice_seconds = voice_value * 3600
-    elif unit == 'm':
-        voice_seconds = voice_value * 60
-    else:
-        voice_seconds = voice_value
-    else:
-        voice_seconds = 0
+                        # Ищем голосовое время
+                        voice_match = re.search(r'Voice[:\s]+(\d+)([hm]?)', line, re.IGNORECASE)
+                        if voice_match:
+                            voice_value = int(voice_match.group(1))
+                            unit = voice_match.group(2).lower() if voice_match.group(2) else 'h'
+                            if unit == 'h':
+                                voice_seconds = voice_value * 3600
+                            elif unit == 'm':
+                                voice_seconds = voice_value * 60
+                            else:
+                                voice_seconds = voice_value
+                        else:
+                            voice_seconds = 0
 
-# Конвертируем сообщения в XP (2 XP за сообщение)
-        chat_xp = messages * CHAT_XP_PER_MESSAGE
+                        # Конвертируем сообщения в XP (2 XP за сообщение)
+                        chat_xp = messages * CHAT_XP_PER_MESSAGE
 
-# Конвертируем голосовое время в XP (5 XP за минуту)
-        voice_xp = (voice_seconds // 60) * VOICE_XP_PER_MINUTE
+                        # Конвертируем голосовое время в XP (5 XP за минуту)
+                        voice_xp = (voice_seconds // 60) * VOICE_XP_PER_MINUTE
 
-        data[user_id] = {
-        "chat_xp": chat_xp,
-        "voice_xp": voice_xp,
-        "voice_seconds": voice_seconds,
-        "voice_time": _voice_time_from_seconds(voice_seconds),
-        }
+                        data[user_id] = {
+                            "chat_xp": chat_xp,
+                            "voice_xp": voice_xp,
+                            "voice_seconds": voice_seconds,
+                            "voice_time": _voice_time_from_seconds(voice_seconds),
+                        }
 
         return data if data else None
     except Exception as e:
@@ -3575,50 +3579,50 @@ def parse_akemi_leaderboard_text(text: str) -> dict | None:
         data = {}
         import re
 
-# Парсим строки формата: "1. @user - Messages: 100, Voice: 50h"
+        # Парсим строки формата: "1. @user - Messages: 100, Voice: 50h"
         lines = text.split('\n')
-    for line in lines:
-        line = line.strip()
-    if not line or not line[0].isdigit():
-        continue
+        for line in lines:
+            line = line.strip()
+            if not line or not line[0].isdigit():
+                continue
 
-# Ищем ID пользователя
-        match = re.search(r'<@!?(\d+)>', line)
-    if not match:
-        continue
+            # Ищем ID пользователя
+            match = re.search(r'<@!?(\d+)>', line)
+            if not match:
+                continue
 
-        user_id = match.group(1)
+            user_id = match.group(1)
 
-# Ищем сообщения
-        msg_match = re.search(r'Messages?[:\s]+(\d+)', line, re.IGNORECASE)
-        messages = int(msg_match.group(1)) if msg_match else 0
+            # Ищем сообщения
+            msg_match = re.search(r'Messages?[:\s]+(\d+)', line, re.IGNORECASE)
+            messages = int(msg_match.group(1)) if msg_match else 0
 
-# Ищем голосовое время
-        voice_match = re.search(r'Voice[:\s]+(\d+\.?\d*)([hm]?)', line, re.IGNORECASE)
-    if voice_match:
-        voice_value = float(voice_match.group(1))
-        unit = voice_match.group(2).lower() if voice_match.group(2) else 'h'
-    if unit == 'h':
-        voice_seconds = int(voice_value * 3600)
-    elif unit == 'm':
-        voice_seconds = int(voice_value * 60)
-    else:
-        voice_seconds = int(voice_value)
-    else:
-        voice_seconds = 0
+            # Ищем голосовое время
+            voice_match = re.search(r'Voice[:\s]+(\d+\.?\d*)([hm]?)', line, re.IGNORECASE)
+            if voice_match:
+                voice_value = float(voice_match.group(1))
+                unit = voice_match.group(2).lower() if voice_match.group(2) else 'h'
+                if unit == 'h':
+                    voice_seconds = int(voice_value * 3600)
+                elif unit == 'm':
+                    voice_seconds = int(voice_value * 60)
+                else:
+                    voice_seconds = int(voice_value)
+            else:
+                voice_seconds = 0
 
-# Конвертируем сообщения в XP
-        chat_xp = messages * CHAT_XP_PER_MESSAGE
+            # Конвертируем сообщения в XP
+            chat_xp = messages * CHAT_XP_PER_MESSAGE
 
-# Конвертируем голосовое время в XP
-        voice_xp = (voice_seconds // 60) * VOICE_XP_PER_MINUTE
+            # Конвертируем голосовое время в XP
+            voice_xp = (voice_seconds // 60) * VOICE_XP_PER_MINUTE
 
-        data[user_id] = {
-        "chat_xp": chat_xp,
-        "voice_xp": voice_xp,
-        "voice_seconds": voice_seconds,
-        "voice_time": _voice_time_from_seconds(voice_seconds),
-        }
+            data[user_id] = {
+                "chat_xp": chat_xp,
+                "voice_xp": voice_xp,
+                "voice_seconds": voice_seconds,
+                "voice_time": _voice_time_from_seconds(voice_seconds),
+            }
 
         return data if data else None
     except Exception as e:
@@ -3628,30 +3632,30 @@ def parse_akemi_leaderboard_text(text: str) -> dict | None:
 
 @bot.event
 async def on_message(message: discord.Message):
-# Обработка ответов от бота Akemi для синхронизации
+    # Обработка ответов от бота Akemi для синхронизации
     if message.author.bot and message.author.name.lower() in ["akemi", "akemi bot"]:
-# Проверяем, есть ли ожидающие синхронизацию
-    for channel_id, event in akemi_sync_waiters.items():
-        if message.channel.id == channel_id:
-# Парсим данные из embed
-    if message.embeds:
-        for embed in message.embeds:
-        data = parse_akemi_leaderboard(embed)
-    if data:
-        akemi_sync_data[channel_id] = data
-        event.set()
-        break
-# Также проверяем текст сообщения
-    if message.content and not akemi_sync_data.get(channel_id):
-        data = parse_akemi_leaderboard_text(message.content)
-    if data:
-        akemi_sync_data[channel_id] = data
-        event.set()
-        break
+        # Проверяем, есть ли ожидающие синхронизацию
+        for channel_id, event in akemi_sync_waiters.items():
+            if message.channel.id == channel_id:
+                # Парсим данные из embed
+                if message.embeds:
+                    for embed in message.embeds:
+                        data = parse_akemi_leaderboard(embed)
+                        if data:
+                            akemi_sync_data[channel_id] = data
+                            event.set()
+                            break
+                # Также проверяем текст сообщения
+                if message.content and not akemi_sync_data.get(channel_id):
+                    data = parse_akemi_leaderboard_text(message.content)
+                    if data:
+                        akemi_sync_data[channel_id] = data
+                        event.set()
+                        break
 
     if message.author.bot:
         return
-        await enforce_message_rate_limit(message)
+    await enforce_message_rate_limit(message)
     if message.guild:
         await add_chat_xp_for_message(message)
         await bot.process_commands(message)
@@ -3701,25 +3705,25 @@ async def apply_autoroles(member: discord.Member) -> list[discord.Role]:
     if not autorole_ids or member.guild is None:
         return []
 
-        guild = member.guild
-        roles_to_assign: list[discord.Role] = []
-        missing_role_ids: list[int] = []
+    guild = member.guild
+    roles_to_assign: list[discord.Role] = []
+    missing_role_ids: list[int] = []
 
     for role_id in autorole_ids:
         role = guild.get_role(role_id)
-    if role is None:
-        missing_role_ids.append(role_id)
-        continue
-    if role in member.roles:
-        continue
+        if role is None:
+            missing_role_ids.append(role_id)
+            continue
+        if role in member.roles:
+            continue
         roles_to_assign.append(role)
 
     if missing_role_ids:
         await send_log_embed(
-        "Автовыдача ролей",
-        f"⚠️ Не найдены роли: {', '.join(str(rid) for rid in missing_role_ids)}. Проверьте настройки.",
-        color=0xFEE75C,
-        member=member,
+            "Автовыдача ролей",
+            f"⚠️ Не найдены роли: {', '.join(str(rid) for rid in missing_role_ids)}. Проверьте настройки.",
+            color=0xFEE75C,
+            member=member,
         )
 
     if not roles_to_assign:
@@ -3730,17 +3734,17 @@ async def apply_autoroles(member: discord.Member) -> list[discord.Role]:
         return roles_to_assign
     except discord.Forbidden:
         await send_log_embed(
-        "Автовыдача ролей",
-        "🚫 Не удалось выдать роли — недостаточно прав. Проверьте позицию роли бота.",
-        color=0xED4245,
+            "Автовыдача ролей",
+            "🚫 Не удалось выдать роли — недостаточно прав. Проверьте позицию роли бота.",
+            color=0xED4245,
         member=member,
         )
     except discord.HTTPException as exc:
         await send_log_embed(
-        "Автовыдача ролей",
-        f"🚫 Не удалось выдать роли: {exc}",
-        color=0xED4245,
-        member=member,
+            "Автовыдача ролей",
+            f"🚫 Не удалось выдать роли: {exc}",
+            color=0xED4245,
+            member=member,
         )
         return []
 
@@ -3778,63 +3782,63 @@ async def restore_generator(generator: dict, original_channel_id: int = None) ->
     if not generator_channel_id:
         return False
 
-# Проверяем, не восстанавливается ли уже этот генератор
+    # Проверяем, не восстанавливается ли уже этот генератор
     if generator_channel_id in restoring_generators:
         print(f"[Voice] Генератор {generator_channel_id} уже восстанавливается, пропускаем")
         return False
 
-# Проверяем, существует ли генератор
-        generator_channel = bot.get_channel(generator_channel_id)
+    # Проверяем, существует ли генератор
+    generator_channel = bot.get_channel(generator_channel_id)
     if generator_channel:
-# Генератор существует, не нужно восстанавливать
+        # Генератор существует, не нужно восстанавливать
         return False
 
-# Добавляем в список восстанавливаемых
-        restoring_generators.add(generator_channel_id)
+    # Добавляем в список восстанавливаемых
+    restoring_generators.add(generator_channel_id)
 
     try:
         guild_id = generator.get("guild_id")
-    if not guild_id:
-        print(f"[Voice] Не удалось восстановить генератор {generator_channel_id}: нет guild_id")
-        return False
+        if not guild_id:
+            print(f"[Voice] Не удалось восстановить генератор {generator_channel_id}: нет guild_id")
+            return False
 
         guild = bot.get_guild(guild_id)
-    if not guild:
-        print(f"[Voice] Не удалось восстановить генератор {generator_channel_id}: гильдия не найдена")
-        return False
+        if not guild:
+            print(f"[Voice] Не удалось восстановить генератор {generator_channel_id}: гильдия не найдена")
+            return False
 
         category_id = generator.get("category_id")
         category = guild.get_channel(category_id) if category_id else None
 
-# Используем оригинальное имя, если оно было сохранено, иначе стандартное
+        # Используем оригинальное имя, если оно было сохранено, иначе стандартное
         generator_name = generator.get("name", "➕ Создать комнату")
-    if not generator_name or generator_name == "➕ Создать комнату":
-        generator_name = "➕ Создать комнату"
+        if not generator_name or generator_name == "➕ Создать комнату":
+            generator_name = "➕ Создать комнату"
 
-# Используем сохраненную позицию генератора, если она есть
+        # Используем сохраненную позицию генератора, если она есть
         generator_position = generator.get("position")
 
         print(f"[Voice] Восстанавливаем генератор {generator_channel_id} (был {original_channel_id if original_channel_id else generator_channel_id}), позиция: {generator_position}...")
 
-# Восстанавливаем генератор
+        # Восстанавливаем генератор
         restored_channel = await guild.create_voice_channel(
-        name=generator_name,
-        category=category if isinstance(category, discord.CategoryChannel) else None,
-        position=generator_position,  # Восстанавливаем генератор в его оригинальной позиции
-        reason="Восстановление удаленного генератора"
+            name=generator_name,
+            category=category if isinstance(category, discord.CategoryChannel) else None,
+            position=generator_position,  # Восстанавливаем генератор в его оригинальной позиции
+            reason="Восстановление удаленного генератора"
         )
 
-# Если позиция была указана, но генератор не на правильной позиции, перемещаем его
-    if generator_position is not None:
-        try:
-        await asyncio.sleep(0.1)  # Небольшая задержка
-    if restored_channel.position != generator_position:
-        await restored_channel.edit(position=generator_position)
-        print(f"[Voice] Генератор перемещен на позицию {generator_position}")
-    except Exception as e:
-        print(f"[Voice] Не удалось переместить генератор на позицию {generator_position}: {e}")
+        # Если позиция была указана, но генератор не на правильной позиции, перемещаем его
+        if generator_position is not None:
+            try:
+                await asyncio.sleep(0.1)  # Небольшая задержка
+                if restored_channel.position != generator_position:
+                    await restored_channel.edit(position=generator_position)
+                    print(f"[Voice] Генератор перемещен на позицию {generator_position}")
+            except Exception as e:
+                print(f"[Voice] Не удалось переместить генератор на позицию {generator_position}: {e}")
 
-# Обновляем ID генератора в конфиге
+        # Обновляем ID генератора в конфиге
         old_id = generator_channel_id
         generator["generator_channel_id"] = restored_channel.id
         save_voice_config()
@@ -3863,104 +3867,104 @@ async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-# КРИТИЧЕСКИ ВАЖНО: Проверяем генераторы ПЕРВЫМ ДЕЛОМ, до любых других операций
-# Проверяем, не является ли before.channel генератором
+    # КРИТИЧЕСКИ ВАЖНО: Проверяем генераторы ПЕРВЫМ ДЕЛОМ, до любых других операций
+    # Проверяем, не является ли before.channel генератором
     if before.channel:
         before_generator = get_generator_by_channel_id(before.channel.id)
-    if before_generator:
-# Это канал генератора - НИКОГДА не удаляем и не обрабатываем как комнату
-        print(f"[Voice] before.channel {before.channel.id} - это генератор, пропускаем обработку")
-# Продолжаем только для обновления сессий, но не для очистки
+        if before_generator:
+            # Это канал генератора - НИКОГДА не удаляем и не обрабатываем как комнату
+            print(f"[Voice] before.channel {before.channel.id} - это генератор, пропускаем обработку")
+            # Продолжаем только для обновления сессий, но не для очистки
 
-# Проверяем, не является ли after.channel генератором
+    # Проверяем, не является ли after.channel генератором
     if after.channel:
         after_generator = get_generator_by_channel_id(after.channel.id)
-    if after_generator:
-# Пользователь заходит в генератор - обрабатываем это
-    if await handle_generator_join(member, after):
-# После создания комнаты из генератора, before.channel будет каналом генератора
-# Нужно убедиться, что мы не пытаемся его удалить
-        print(f"[Voice] Комната создана из генератора, генератор {before.channel.id if before.channel else 'N/A'} не будет удален")
-        return
+        if after_generator:
+            # Пользователь заходит в генератор - обрабатываем это
+            if await handle_generator_join(member, after):
+                # После создания комнаты из генератора, before.channel будет каналом генератора
+                # Нужно убедиться, что мы не пытаемся его удалить
+                print(f"[Voice] Комната создана из генератора, генератор {before.channel.id if before.channel else 'N/A'} не будет удален")
+                return
 
-        now = utc_now()
+    now = utc_now()
     if after.channel and not before.channel:
         voice_sessions[member.id] = now
     elif before.channel and not after.channel:
         start = voice_sessions.pop(member.id, None)
-    if start:
-        await add_voice_xp_for_duration(member, (now - start).total_seconds())
+        if start:
+            await add_voice_xp_for_duration(member, (now - start).total_seconds())
     elif before.channel and after.channel and before.channel != after.channel:
         start = voice_sessions.get(member.id)
-    if start:
-        await add_voice_xp_for_duration(member, (now - start).total_seconds())
-        voice_sessions[member.id] = now
+        if start:
+            await add_voice_xp_for_duration(member, (now - start).total_seconds())
+            voice_sessions[member.id] = now
 
-# Проверяем голосовой мут: если пользователь был замучен и его размутили, снова мутим
-        is_muted, mute_data = is_voice_muted(member.id)
+    # Проверяем голосовой мут: если пользователь был замучен и его размутили, снова мутим
+    is_muted, mute_data = is_voice_muted(member.id)
     if is_muted:
-# Пользователь должен быть замучен, проверяем текущее состояние
-    if after.channel:  # Пользователь в голосовом канале
-    if not after.mute:  # Пользователь не замучен, но должен быть
-    try:
-        await member.edit(mute=True, reason="Автоматическое восстановление мута голоса")
-        print(f"[Voice Mute] Пользователь {member.id} был размьючен, восстановлен мут")
-    except (discord.Forbidden, discord.HTTPException) as e:
-        print(f"[Voice Mute] Не удалось восстановить мут для {member.id}: {e}")
-# Если пользователь заходит в голосовой канал и у него есть активный мут, сразу мутим
-    if after.channel and not before.channel:
-        if not after.mute:
-        try:
-        await member.edit(mute=True, reason="Автоматическое применение мута голоса")
-        print(f"[Voice Mute] Пользователь {member.id} зашел в голосовой канал с активным мутом, применен мут")
-    except (discord.Forbidden, discord.HTTPException) as e:
-        print(f"[Voice Mute] Не удалось применить мут для {member.id}: {e}")
+        # Пользователь должен быть замучен, проверяем текущее состояние
+        if after.channel:  # Пользователь в голосовом канале
+            if not after.mute:  # Пользователь не замучен, но должен быть
+                try:
+                    await member.edit(mute=True, reason="Автоматическое восстановление мута голоса")
+                    print(f"[Voice Mute] Пользователь {member.id} был размьючен, восстановлен мут")
+                except (discord.Forbidden, discord.HTTPException) as e:
+                    print(f"[Voice Mute] Не удалось восстановить мут для {member.id}: {e}")
+        # Если пользователь заходит в голосовой канал и у него есть активный мут, сразу мутим
+        if after.channel and not before.channel:
+            if not after.mute:
+                try:
+                    await member.edit(mute=True, reason="Автоматическое применение мута голоса")
+                    print(f"[Voice Mute] Пользователь {member.id} зашел в голосовой канал с активным мутом, применен мут")
+                except (discord.Forbidden, discord.HTTPException) as e:
+                    print(f"[Voice Mute] Не удалось применить мут для {member.id}: {e}")
 
     if after.channel:
-# Проверяем, что after.channel не является каналом генератора
+        # Проверяем, что after.channel не является каналом генератора
         after_generator = get_generator_by_channel_id(after.channel.id)
-    if not after_generator:
-        await enforce_room_membership(member, after.channel)
+        if not after_generator:
+            await enforce_room_membership(member, after.channel)
 
     if before.channel:
-# ДОПОЛНИТЕЛЬНАЯ проверка: убеждаемся, что это НЕ генератор
+        # ДОПОЛНИТЕЛЬНАЯ проверка: убеждаемся, что это НЕ генератор
         before_generator = get_generator_by_channel_id(before.channel.id)
-    if before_generator:
-# Это канал генератора, НИКОГДА не удаляем его
-        print(f"[Voice] Защита: попытка удалить генератор {before.channel.id} предотвращена")
-        return
+        if before_generator:
+            # Это канал генератора, НИКОГДА не удаляем его
+            print(f"[Voice] Защита: попытка удалить генератор {before.channel.id} предотвращена")
+            return
 
-# Также проверяем, что канал не находится в списке генераторов (двойная проверка)
+        # Также проверяем, что канал не находится в списке генераторов (двойная проверка)
         generator_channel_ids = {gen.get("generator_channel_id") for gen in voice_config.get("generators", []) if gen.get("generator_channel_id")}
-    if before.channel.id in generator_channel_ids:
-        print(f"[Voice] Защита: канал {before.channel.id} найден в списке генераторов, удаление предотвращено")
-        return
+        if before.channel.id in generator_channel_ids:
+            print(f"[Voice] Защита: канал {before.channel.id} найден в списке генераторов, удаление предотвращено")
+            return
 
-# Только если это точно НЕ генератор, проверяем на очистку
+        # Только если это точно НЕ генератор, проверяем на очистку
         await cleanup_empty_room(before.channel)
 
     if before.channel and after.channel and before.channel != after.channel:
         await send_log_embed(
-        "Голосовой переход",
-        f"{member.mention} перешёл из {channel_ref(before.channel)} в {channel_ref(after.channel)}.",
-        color=0xFEE75C,
-        member=member,
+            "Голосовой переход",
+            f"{member.mention} перешёл из {channel_ref(before.channel)} в {channel_ref(after.channel)}.",
+            color=0xFEE75C,
+            member=member,
         )
         return
 
     if after.channel and before.channel != after.channel:
         await send_log_embed(
-        "Голосовое подключение",
-        f"{member.mention} подключился к каналу {channel_ref(after.channel)}.",
-        color=0x5865F2,
-        member=member,
+            "Голосовое подключение",
+            f"{member.mention} подключился к каналу {channel_ref(after.channel)}.",
+            color=0x5865F2,
+            member=member,
         )
     if before.channel and before.channel != after.channel:
         await send_log_embed(
-        "Голосовое отключение",
-        f"{member.mention} отключился от канала {channel_ref(before.channel)}.",
-        color=0x23272A,
-        member=member,
+            "Голосовое отключение",
+            f"{member.mention} отключился от канала {channel_ref(before.channel)}.",
+            color=0x23272A,
+            member=member,
         )
 
 
@@ -4013,20 +4017,20 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
     if not before_muted and after_muted:
         if not should_skip_log(recent_mute_log_ids, after.id):
-        await send_log_embed(
-        "Выдан мут",
-        f"{after.mention} получил роль {mute_role.mention}.",
-        color=0xED4245,
-        member=after,
-        )
+            await send_log_embed(
+                "Выдан мут",
+                f"{after.mention} получил роль {mute_role.mention}.",
+                color=0xED4245,
+                member=after,
+            )
     elif before_muted and not after_muted:
         if not should_skip_log(recent_mute_log_ids, after.id):
-        await send_log_embed(
-        "Снят мут",
-        f"{after.mention} больше не имеет роли {mute_role.mention}.",
-        color=0x57F287,
-        member=after,
-        )
+            await send_log_embed(
+                "Снят мут",
+                f"{after.mention} больше не имеет роли {mute_role.mention}.",
+                color=0x57F287,
+                member=after,
+            )
 
         before_roles = set(before.roles)
         after_roles = set(after.roles)
@@ -4035,28 +4039,28 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
     for role in added_roles:
         if mute_role and role == mute_role:
-        continue
+            continue
         actor = await resolve_role_actor(after.guild, after, role.id, "add")
         actor_text = actor.mention if isinstance(actor, (discord.Member, discord.User)) else "неизвестно"
         await send_log_embed(
-        "Выдана роль",
-        f"{after.mention} получил роль {role.mention}.",
-        color=role.color.value or 0x57F287,
-        member=after,
-        fields=[("Выдал", actor_text)],
+            "Выдана роль",
+            f"{after.mention} получил роль {role.mention}.",
+            color=role.color.value or 0x57F287,
+            member=after,
+            fields=[("Выдал", actor_text)],
         )
 
     for role in removed_roles:
         if mute_role and role == mute_role:
-        continue
+            continue
         actor = await resolve_role_actor(after.guild, after, role.id, "remove")
         actor_text = actor.mention if isinstance(actor, (discord.Member, discord.User)) else "неизвестно"
         await send_log_embed(
-        "Снята роль",
-        f"С {after.mention} снята роль {role.mention}.",
-        color=0xED4245,
-        member=after,
-        fields=[("Снял", actor_text)],
+            "Снята роль",
+            f"С {after.mention} снята роль {role.mention}.",
+            color=0xED4245,
+            member=after,
+            fields=[("Снял", actor_text)],
         )
 
 
@@ -4101,21 +4105,23 @@ async def schedule_unmute_ticket(user_id: int, duration: timedelta):
     if user_id in ticket_mutes:
         mute_data = ticket_mutes.get(user_id)
         expires_at_str = mute_data.get("expires_at") if mute_data else None
-    if expires_at_str:
-        try:
-        expires_at = datetime.fromisoformat(expires_at_str)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if utc_now() >= expires_at:
-        ticket_mutes.pop(user_id, None)
-        save_ticket_mutes()
+        if expires_at_str:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if utc_now() >= expires_at:
+                    ticket_mutes.pop(user_id, None)
+                    save_ticket_mutes()
+            except Exception:
+                pass
     try:
         user = await bot.fetch_user(user_id)
         await send_log_embed(
-        "Авто-снятие мута тикета",
-        f"{user.mention if hasattr(user, 'mention') else user} автоматически размьючен от создания тикетов после истечения времени.",
-        color=0x57F287,
-        member=user,
+            "Авто-снятие мута тикета",
+            f"{user.mention if hasattr(user, 'mention') else user} автоматически размьючен от создания тикетов после истечения времени.",
+            color=0x57F287,
+            member=user,
         )
     except Exception:
         pass
@@ -4129,21 +4135,23 @@ async def schedule_unmute_voice(user_id: int, duration: timedelta):
     if user_id in voice_mutes:
         mute_data = voice_mutes.get(user_id)
         expires_at_str = mute_data.get("expires_at") if mute_data else None
-    if expires_at_str:
-        try:
-        expires_at = datetime.fromisoformat(expires_at_str)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if utc_now() >= expires_at:
-        voice_mutes.pop(user_id, None)
-        save_voice_mutes()
+        if expires_at_str:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if utc_now() >= expires_at:
+                    voice_mutes.pop(user_id, None)
+                    save_voice_mutes()
+            except Exception:
+                pass
     try:
         user = await bot.fetch_user(user_id)
         await send_log_embed(
-        "Авто-снятие мута голоса",
-        f"{user.mention if hasattr(user, 'mention') else user} автоматически размьючен в голосовом канале после истечения времени.",
-        color=0x57F287,
-        member=user,
+            "Авто-снятие мута голоса",
+            f"{user.mention if hasattr(user, 'mention') else user} автоматически размьючен в голосовом канале после истечения времени.",
+            color=0x57F287,
+            member=user,
         )
     except Exception:
         pass
@@ -4204,19 +4212,19 @@ async def unban_command(ctx: commands.Context, user: discord.User | None = None,
         await ctx.send(embed=command_form_embed("unban"))
         return
 
-        is_super = is_super_admin(ctx.author)
+    is_super = is_super_admin(ctx.author)
     if not is_super:
         if not has_mod_role(ctx.author):
-        await ctx.send(
-        embed=make_embed("Отказано", "Недостаточно прав. Обратитесь к администратору.", color=0xED4245),
-        delete_after=10,
-        )
-        return
+            await ctx.send(
+                embed=make_embed("Отказано", "Недостаточно прав. Обратитесь к администратору.", color=0xED4245),
+                delete_after=10,
+            )
+            return
     if not ctx.author.guild_permissions.ban_members:
         await ctx.send(embed=make_embed("Ошибка", "🚫 Ваша роль не позволяет снимать баны.", color=0xED4245))
         return
 
-        guild_me = guild.me
+    guild_me = guild.me
     if guild_me is None or not getattr(guild_me.guild_permissions, "ban_members", False):
         await ctx.send(embed=make_embed("Ошибка", "🚫 У бота нет прав на разбан.", color=0xED4245))
         return
@@ -4452,12 +4460,12 @@ async def mute_voice_command(ctx: commands.Context, *, args: str = ""):
     except ValueError:
         pass
     else:
-# Пытаемся распарсить как ID
-    try:
-        user_id = int(user_input)
-        member = ctx.guild.get_member(user_id)
-    except ValueError:
-        pass
+        # Пытаемся распарсить как ID
+        try:
+            user_id = int(user_input)
+            member = ctx.guild.get_member(user_id)
+        except ValueError:
+            pass
 
     if member is None:
         await ctx.send(embed=make_embed("Ошибка", "⚠️ Пользователь не найден. Укажите ID или упомяните пользователя.", color=0xED4245))
@@ -4637,15 +4645,15 @@ async def unwarn_command(ctx: commands.Context, member: discord.Member, warn_ind
     if not allowed:
         return
 
-        success, remaining = remove_warning(member.id, warn_index)
+    success, remaining = remove_warning(member.id, warn_index)
     if not success:
         if warn_index is not None:
-        await ctx.send(
-        embed=make_embed("Ошибка", "🚫 Неверный номер предупреждения.", color=0xED4245),
-        delete_after=10,
-        )
-    else:
-        await ctx.send(embed=make_embed("Нет предупреждений", f"ℹ️ У {member.mention} нет предупреждений.", color=0xFEE75C))
+            await ctx.send(
+                embed=make_embed("Ошибка", "🚫 Неверный номер предупреждения.", color=0xED4245),
+                delete_after=10,
+            )
+        else:
+            await ctx.send(embed=make_embed("Нет предупреждений", f"ℹ️ У {member.mention} нет предупреждений.", color=0xFEE75C))
         return
 
         target_label = f"предупреждение №{warn_index}" if warn_index else "последнее предупреждение"
@@ -4797,158 +4805,158 @@ async def eternal_command(ctx: commands.Context):
         }
 
         async with aiohttp.ClientSession() as session:
-        async with session.get(reddit_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
-    if response.status == 200:
-        data = await response.json()
-        posts = data.get("data", {}).get("children", [])
+            async with session.get(reddit_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    posts = data.get("data", {}).get("children", [])
 
-    if not posts:
-        await ctx.send(embed=make_embed("Ошибка", "🚫 Не найдено постов. Попробуйте позже.", color=0xED4245))
-        return
+                    if not posts:
+                        await ctx.send(embed=make_embed("Ошибка", "🚫 Не найдено постов. Попробуйте позже.", color=0xED4245))
+                        return
 
-# Фильтруем посты с медиа
-        media_posts = []
-    for post_data in posts:
-        post = post_data.get("data", {})
-        url = post.get("url", "")
-        post_hint = post.get("post_hint", "")
-        domain = post.get("domain", "")
+                    # Фильтруем посты с медиа
+                    media_posts = []
+                    for post_data in posts:
+                        post = post_data.get("data", {})
+                        url = post.get("url", "")
+                        post_hint = post.get("post_hint", "")
+                        domain = post.get("domain", "")
 
-# Проверяем, что это медиа-контент
-        is_media = False
+                        # Проверяем, что это медиа-контент
+                        is_media = False
 
-# Прямые ссылки на изображения
-    if url.endswith((".gif", ".jpg", ".jpeg", ".png", ".webp", ".gifv")):
-        is_media = True
-# Reddit изображения
-    elif "i.redd.it" in url or "preview.redd.it" in url:
-        is_media = True
-# Imgur
-    elif "imgur.com" in url and not any(x in url for x in ["/a/", "/gallery/", "/r/"]):
-# Одиночные изображения imgur
-    if not url.endswith((".gif", ".jpg", ".png", ".jpeg")):
-        url = url + ".gif"
-        is_media = True
-# Gfycat
-    elif "gfycat.com" in url:
-# Преобразуем gfycat URL в прямую ссылку на GIF
-        gfycat_id = url.split("/")[-1].split("?")[0].split("-")[0]
-# Пробуем получить прямой GIF
-        url = f"https://giant.gfycat.com/{gfycat_id}.gif"
-        is_media = True
-# Redgifs
-    elif "redgifs.com" in url:
-        redgifs_id = url.split("/")[-1].split("?")[0]
-# Пробуем получить прямой GIF
-        url = f"https://thumbs.redgifs.com/{redgifs_id}.gif"
-        is_media = True
-# Проверка по post_hint
-    elif post_hint in ["image", "rich:video", "hosted:video"]:
-        is_media = True
+                        # Прямые ссылки на изображения
+                        if url.endswith((".gif", ".jpg", ".jpeg", ".png", ".webp", ".gifv")):
+                            is_media = True
+                        # Reddit изображения
+                        elif "i.redd.it" in url or "preview.redd.it" in url:
+                            is_media = True
+                        # Imgur
+                        elif "imgur.com" in url and not any(x in url for x in ["/a/", "/gallery/", "/r/"]):
+                            # Одиночные изображения imgur
+                            if not url.endswith((".gif", ".jpg", ".png", ".jpeg")):
+                                url = url + ".gif"
+                            is_media = True
+                        # Gfycat
+                        elif "gfycat.com" in url:
+                            # Преобразуем gfycat URL в прямую ссылку на GIF
+                            gfycat_id = url.split("/")[-1].split("?")[0].split("-")[0]
+                            # Пробуем получить прямой GIF
+                            url = f"https://giant.gfycat.com/{gfycat_id}.gif"
+                            is_media = True
+                        # Redgifs
+                        elif "redgifs.com" in url:
+                            redgifs_id = url.split("/")[-1].split("?")[0]
+                            # Пробуем получить прямой GIF
+                            url = f"https://thumbs.redgifs.com/{redgifs_id}.gif"
+                            is_media = True
+                        # Проверка по post_hint
+                        elif post_hint in ["image", "rich:video", "hosted:video"]:
+                            is_media = True
 
-# Исключаем текстовые посты и ссылки на другие сайты
-    if is_media and url and not url.startswith(("https://www.reddit.com", "https://reddit.com", "https://v.redd.it")):
-        media_posts.append({"url": url, "title": post.get("title", "")})
+                        # Исключаем текстовые посты и ссылки на другие сайты
+                        if is_media and url and not url.startswith(("https://www.reddit.com", "https://reddit.com", "https://v.redd.it")):
+                            media_posts.append({"url": url, "title": post.get("title", "")})
 
-    if media_posts:
-        selected = random.choice(media_posts)
-        media_url = selected["url"]
+                    if media_posts:
+                        selected = random.choice(media_posts)
+                        media_url = selected["url"]
 
-# Дополнительная обработка imgur
-    if "imgur.com" in media_url:
-        if not media_url.endswith((".gif", ".jpg", ".png", ".jpeg", ".webp")):
-        if "/a/" not in media_url and "/gallery/" not in media_url:
-        media_url = media_url + ".gif"
+                        # Дополнительная обработка imgur
+                        if "imgur.com" in media_url:
+                            if not media_url.endswith((".gif", ".jpg", ".png", ".jpeg", ".webp")):
+                                if "/a/" not in media_url and "/gallery/" not in media_url:
+                                    media_url = media_url + ".gif"
 
-# Пытаемся скачать и отправить медиа как файл
-    try:
-        async with session.get(media_url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as media_response:
-    if media_response.status == 200:
-# Определяем расширение файла
-        content_type = media_response.headers.get('Content-Type', '')
-        file_extension = '.gif'
-    if 'image/jpeg' in content_type or 'image/jpg' in content_type:
-        file_extension = '.jpg'
-    elif 'image/png' in content_type:
-        file_extension = '.png'
-    elif 'image/webp' in content_type:
-        file_extension = '.webp'
-    elif 'image/gif' in content_type:
-        file_extension = '.gif'
-    else:
-# Пытаемся определить по URL
-    if media_url.endswith(('.jpg', '.jpeg')):
-        file_extension = '.jpg'
-    elif media_url.endswith('.png'):
-        file_extension = '.png'
-    elif media_url.endswith('.webp'):
-        file_extension = '.webp'
+                        # Пытаемся скачать и отправить медиа как файл
+                        try:
+                            async with session.get(media_url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as media_response:
+                                if media_response.status == 200:
+                                    # Определяем расширение файла
+                                    content_type = media_response.headers.get('Content-Type', '')
+                                    file_extension = '.gif'
+                                    if 'image/jpeg' in content_type or 'image/jpg' in content_type:
+                                        file_extension = '.jpg'
+                                    elif 'image/png' in content_type:
+                                        file_extension = '.png'
+                                    elif 'image/webp' in content_type:
+                                        file_extension = '.webp'
+                                    elif 'image/gif' in content_type:
+                                        file_extension = '.gif'
+                                    else:
+                                        # Пытаемся определить по URL
+                                        if media_url.endswith(('.jpg', '.jpeg')):
+                                            file_extension = '.jpg'
+                                        elif media_url.endswith('.png'):
+                                            file_extension = '.png'
+                                        elif media_url.endswith('.webp'):
+                                            file_extension = '.webp'
 
-# Скачиваем файл
-        file_data = await media_response.read()
+                                    # Скачиваем файл
+                                    file_data = await media_response.read()
 
-# Проверяем размер файла (Discord лимит 25MB)
-    if len(file_data) > 25 * 1024 * 1024:
-# Если файл слишком большой, отправляем через embed
-        embed = discord.Embed(
-        title="🌸 Аниме персонаж",
-        description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
-        color=0xFF69B4,
-        timestamp=utc_now()
-        )
-        embed.set_image(url=media_url)
-        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        await ctx.send(embed=embed)
-    else:
-# Отправляем как файл
-        file_obj = discord.File(
-        io.BytesIO(file_data),
-        filename=f"anime{file_extension}"
-        )
-        embed = discord.Embed(
-        title="🌸 Аниме персонаж",
-        description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
-        color=0xFF69B4,
-        timestamp=utc_now()
-        )
-        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        await ctx.send(embed=embed, file=file_obj)
-    else:
-# Если не удалось скачать, отправляем через embed
-        embed = discord.Embed(
-        title="🌸 Аниме персонаж",
-        description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
-        color=0xFF69B4,
-        timestamp=utc_now()
-        )
-        embed.set_image(url=media_url)
-        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        await ctx.send(embed=embed)
-    except Exception as download_error:
-# Если ошибка при скачивании, отправляем через embed
-        embed = discord.Embed(
-        title="🌸 ",
-        description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
-        color=0xFF69B4,
-        timestamp=utc_now()
-        )
-        embed.set_image(url=media_url)
-        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        await ctx.send(embed=embed)
-    else:
-        await ctx.send(
-        embed=make_embed("Ошибка", "🚫 Не удалось найти медиа. Попробуйте позже.", color=0xED4245)
-        )
-    else:
-        await ctx.send(
-        embed=make_embed("Ошибка", f"🚫 Ошибка API Reddit (статус {response.status}). Попробуйте позже.", color=0xED4245)
-        )
+                                    # Проверяем размер файла (Discord лимит 25MB)
+                                    if len(file_data) > 25 * 1024 * 1024:
+                                        # Если файл слишком большой, отправляем через embed
+                                        embed = discord.Embed(
+                                            title="🌸 Аниме персонаж",
+                                            description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
+                                            color=0xFF69B4,
+                                            timestamp=utc_now()
+                                        )
+                                        embed.set_image(url=media_url)
+                                        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+                                        await ctx.send(embed=embed)
+                                    else:
+                                        # Отправляем как файл
+                                        file_obj = discord.File(
+                                            io.BytesIO(file_data),
+                                            filename=f"anime{file_extension}"
+                                        )
+                                        embed = discord.Embed(
+                                            title="🌸 Аниме персонаж",
+                                            description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
+                                            color=0xFF69B4,
+                                            timestamp=utc_now()
+                                        )
+                                        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+                                        await ctx.send(embed=embed, file=file_obj)
+                                else:
+                                    # Если не удалось скачать, отправляем через embed
+                                    embed = discord.Embed(
+                                        title="🌸 Аниме персонаж",
+                                        description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
+                                        color=0xFF69B4,
+                                        timestamp=utc_now()
+                                    )
+                                    embed.set_image(url=media_url)
+                                    embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+                                    await ctx.send(embed=embed)
+                        except Exception as download_error:
+                            # Если ошибка при скачивании, отправляем через embed
+                            embed = discord.Embed(
+                                title="🌸 ",
+                                description=f"**{selected.get('title', '')[:200]}**" if selected.get('title') else None,
+                                color=0xFF69B4,
+                                timestamp=utc_now()
+                            )
+                            embed.set_image(url=media_url)
+                            embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+                            await ctx.send(embed=embed)
+                    else:
+                        await ctx.send(
+                            embed=make_embed("Ошибка", "🚫 Не удалось найти медиа. Попробуйте позже.", color=0xED4245)
+                        )
+                else:
+                    await ctx.send(
+                        embed=make_embed("Ошибка", f"🚫 Ошибка API Reddit (статус {response.status}). Попробуйте позже.", color=0xED4245)
+                    )
     except Exception as e:
-        await ctx.send(
-        embed=make_embed("Ошибка", f"🚫 Произошла ошибка: {str(e)[:200]}", color=0xED4245)
-        )
-        import traceback
-        traceback.print_exc()
+            await ctx.send(
+                embed=make_embed("Ошибка", f"🚫 Произошла ошибка: {str(e)[:200]}", color=0xED4245)
+            )
+            import traceback
+            traceback.print_exc()
 
 
 @bot.command(name="eternal-add")
@@ -5240,16 +5248,16 @@ async def gpt_command(ctx: commands.Context, *, prompt: str):
         )
         return
 
-# Проверка разрешенного канала
+    # Проверка разрешенного канала
     if ASK_COMMAND_CHANNEL_ID != 0:
         if ctx.channel.id != ASK_COMMAND_CHANNEL_ID:
-        allowed_channel = ctx.guild.get_channel(ASK_COMMAND_CHANNEL_ID) if ctx.guild else None
-        channel_mention = allowed_channel.mention if allowed_channel else f"канал с ID {ASK_COMMAND_CHANNEL_ID}"
-        await ctx.send(
-        embed=make_embed(
-        "Неверный канал",
-        f"🚫 Команда `!ask` доступна только в {channel_mention}.",
-        color=0xED4245
+            allowed_channel = ctx.guild.get_channel(ASK_COMMAND_CHANNEL_ID) if ctx.guild else None
+            channel_mention = allowed_channel.mention if allowed_channel else f"канал с ID {ASK_COMMAND_CHANNEL_ID}"
+            await ctx.send(
+                embed=make_embed(
+                    "Неверный канал",
+                    f"🚫 Команда `!ask` доступна только в {channel_mention}.",
+                    color=0xED4245
         ),
         delete_after=10
         )
@@ -5284,173 +5292,173 @@ async def gpt_command(ctx: commands.Context, *, prompt: str):
         loading_msg = await ctx.send(embed=make_embed("Proxy AI", "🤔 Секундочку!Думаю....", color=0x5865F2))
 
     try:
-# Проверяем наличие API ключа
-    if not MISTRAL_API_KEY:
-        await loading_msg.edit(embed=make_embed(
-        "Ошибка", 
-        "🚫 API ключ Mistral AI не настроен.\n\n"
-        "Установите переменную окружения `MISTRAL_API_KEY` с вашим API ключом от Mistral AI.\n"
-        "Получить бесплатный ключ: https://console.mistral.ai/api-keys/",
-        color=0xED4245
-        ))
-        return
+        # Проверяем наличие API ключа
+        if not MISTRAL_API_KEY:
+            await loading_msg.edit(embed=make_embed(
+                "Ошибка", 
+                "🚫 API ключ Mistral AI не настроен.\n\n"
+                "Установите переменную окружения `MISTRAL_API_KEY` с вашим API ключом от Mistral AI.\n"
+                "Получить бесплатный ключ: https://console.mistral.ai/api-keys/",
+                color=0xED4245
+            ))
+            return
 
-# Подготавливаем данные для запроса к Mistral AI API
+        # Подготавливаем данные для запроса к Mistral AI API
         headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {MISTRAL_API_KEY}"
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {MISTRAL_API_KEY}"
         }
 
-# Формируем промпт для модели
+        # Формируем промпт для модели
         global ai_priority
         system_prompt = "Ты полезный ассистент. Всегда отвечай на русском языке. Отвечай кратко и по делу."
 
-# Добавляем приоритет, если он установлен
-    if ai_priority:
-        system_prompt += f"\n\nВажный приоритет, которому ты должен следовать: {ai_priority}"
+        # Добавляем приоритет, если он установлен
+        if ai_priority:
+            system_prompt += f"\n\nВажный приоритет, которому ты должен следовать: {ai_priority}"
 
         payload = {
-        "model": MISTRAL_MODEL,
-        "messages": [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt}
-        ],
+            "model": MISTRAL_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
         "max_tokens": 1000,
         "temperature": 0.7
         }
 
-# Отправляем запрос к Mistral AI API
+        # Отправляем запрос к Mistral AI API
         async with aiohttp.ClientSession() as session:
-        async with session.post(
-        MISTRAL_API_URL,
-        headers=headers,
-        json=payload,
-        timeout=aiohttp.ClientTimeout(total=60)
-        ) as response:
-        response_text = await response.text()
+            async with session.post(
+                MISTRAL_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as response:
+                response_text = await response.text()
 
-    if response.status == 200:
+                if response.status == 200:
+                    try:
+                        data = await response.json() if response_text else {}
+
+                        # Mistral AI API возвращает ответ в формате OpenAI {"choices": [{"message": {"content": "..."}}]}
+                        if "choices" in data and len(data["choices"]) > 0:
+                            answer = data["choices"][0].get("message", {}).get("content", "")
+                        else:
+                            raise Exception("Неожиданный формат ответа от API")
+
+                        if not answer or answer == "":
+                            raise Exception("Пустой ответ от API")
+
+                        # Очищаем ответ от лишних символов
+                        answer = answer.strip()
+
+                    except (KeyError, IndexError, ValueError) as e:
+                        raise Exception(f"Ошибка парсинга ответа: {str(e)}")
+                else:
+                    # Обработка ошибок Mistral AI API
+                    try:
+                        error_json = await response.json() if response_text else {}
+                        error_message = error_json.get("message", error_json.get("error", response_text[:200])) if isinstance(error_json, dict) else response_text[:200]
+
+                        # Специальная обработка типичных ошибок API
+                        if response.status == 401:
+                            error_message = "Неверный API ключ Mistral AI. Проверьте переменную окружения MISTRAL_API_KEY"
+                        elif response.status == 429:
+                            error_message = "Превышен лимит запросов к Mistral AI. Попробуйте позже."
+                        elif response.status == 500:
+                            error_message = "Временная ошибка сервера Mistral AI. Попробуйте позже."
+
+                        raise Exception(f"HTTP {response.status}: {error_message}")
+                    except Exception as e:
+                        if "HTTP" not in str(e):
+                            raise Exception(f"HTTP {response.status}: {response_text[:200] if response_text else 'Неизвестная ошибка'}")
+                        raise
+
+                if not answer:
+                    raise Exception("Не удалось получить ответ от API")
+
+        # Переводим ответ на русский, если он на другом языке
         try:
-        data = await response.json() if response_text else {}
+            # Простая проверка: если ответ содержит много латинских букв и мало кириллицы, переводим
+            latin_chars = sum(1 for c in answer if c.isascii() and c.isalpha())
+            cyrillic_chars = sum(1 for c in answer if '\u0400' <= c <= '\u04FF')
+            total_letters = latin_chars + cyrillic_chars
 
-# Mistral AI API возвращает ответ в формате OpenAI {"choices": [{"message": {"content": "..."}}]}
-    if "choices" in data and len(data["choices"]) > 0:
-        answer = data["choices"][0].get("message", {}).get("content", "")
-    else:
-        raise Exception("Неожиданный формат ответа от API")
+            if total_letters > 0 and latin_chars > cyrillic_chars * 2:
+                # Ответ скорее всего на английском, переводим
+                translate_url = "https://api.mymemory.translated.net/get"
+                async with aiohttp.ClientSession() as translate_session:
+                    async with translate_session.get(
+                        translate_url,
+                        params={"q": answer[:5000], "langpair": "en|ru"},
+                        timeout=aiohttp.ClientTimeout(total=10)
+                    ) as translate_response:
+                        if translate_response.status == 200:
+                            translate_data = await translate_response.json()
+                            if translate_data.get("responseStatus") == 200:
+                                translated = translate_data.get("responseData", {}).get("translatedText", "")
+                                if translated and translated != answer:
+                                    answer = translated
+        except Exception:
+            # Если перевод не удался, используем оригинальный ответ
+            pass
 
-    if not answer or answer == "":
-        raise Exception("Пустой ответ от API")
+        # Проверяем длину ответа (Discord имеет лимит 4096 символов для embed)
+        if len(answer) > 4000:
+            # Если ответ слишком длинный, разбиваем на части
+            chunks = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
+            embed = discord.Embed(
+                title="Proxy AI",
+                description=chunks[0],
+                color=0x10A37F,
+                timestamp=utc_now()
+            )
+            embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+            await loading_msg.edit(embed=embed)
 
-# Очищаем ответ от лишних символов
-        answer = answer.strip()
-
-    except (KeyError, IndexError, ValueError) as e:
-        raise Exception(f"Ошибка парсинга ответа: {str(e)}")
-    else:
-# Обработка ошибок Mistral AI API
-    try:
-        error_json = await response.json() if response_text else {}
-        error_message = error_json.get("message", error_json.get("error", response_text[:200])) if isinstance(error_json, dict) else response_text[:200]
-
-# Специальная обработка типичных ошибок API
-    if response.status == 401:
-        error_message = "Неверный API ключ Mistral AI. Проверьте переменную окружения MISTRAL_API_KEY"
-    elif response.status == 429:
-        error_message = "Превышен лимит запросов к Mistral AI. Попробуйте позже."
-    elif response.status == 500:
-        error_message = "Временная ошибка сервера Mistral AI. Попробуйте позже."
-
-        raise Exception(f"HTTP {response.status}: {error_message}")
-    except Exception as e:
-        if "HTTP" not in str(e):
-        raise Exception(f"HTTP {response.status}: {response_text[:200] if response_text else 'Неизвестная ошибка'}")
-        raise
-
-    if not answer:
-        raise Exception("Не удалось получить ответ от API")
-
-# Переводим ответ на русский, если он на другом языке
-    try:
-# Простая проверка: если ответ содержит много латинских букв и мало кириллицы, переводим
-        latin_chars = sum(1 for c in answer if c.isascii() and c.isalpha())
-        cyrillic_chars = sum(1 for c in answer if '\u0400' <= c <= '\u04FF')
-        total_letters = latin_chars + cyrillic_chars
-
-    if total_letters > 0 and latin_chars > cyrillic_chars * 2:
-# Ответ скорее всего на английском, переводим
-        translate_url = "https://api.mymemory.translated.net/get"
-        async with aiohttp.ClientSession() as translate_session:
-        async with translate_session.get(
-        translate_url,
-        params={"q": answer[:5000], "langpair": "en|ru"},
-        timeout=aiohttp.ClientTimeout(total=10)
-        ) as translate_response:
-    if translate_response.status == 200:
-        translate_data = await translate_response.json()
-    if translate_data.get("responseStatus") == 200:
-        translated = translate_data.get("responseData", {}).get("translatedText", "")
-    if translated and translated != answer:
-        answer = translated
-    except Exception:
-# Если перевод не удался, используем оригинальный ответ
-        pass
-
-# Проверяем длину ответа (Discord имеет лимит 4096 символов для embed)
-    if len(answer) > 4000:
-# Если ответ слишком длинный, разбиваем на части
-        chunks = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
-        embed = discord.Embed(
-        title="Proxy AI",
-        description=chunks[0],
-        color=0x10A37F,
-        timestamp=utc_now()
-        )
-        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        await loading_msg.edit(embed=embed)
-
-# Отправляем остальные части как обычные сообщения
-    for chunk in chunks[1:]:
-        await ctx.send(chunk)
-    else:
-# Отправляем полный ответ в embed
-        embed = discord.Embed(
-        title="Proxy AI",
-        description=answer,
-        color=0x10A37F,
-        timestamp=utc_now()
-        )
-        embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        embed.add_field(name="Ваш запрос", value=prompt[:1024], inline=False)
-        await loading_msg.edit(embed=embed)
+            # Отправляем остальные части как обычные сообщения
+            for chunk in chunks[1:]:
+                await ctx.send(chunk)
+        else:
+            # Отправляем полный ответ в embed
+            embed = discord.Embed(
+                title="Proxy AI",
+                description=answer,
+                color=0x10A37F,
+                timestamp=utc_now()
+            )
+            embed.set_footer(text=f"Запрос от {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+            embed.add_field(name="Ваш запрос", value=prompt[:1024], inline=False)
+            await loading_msg.edit(embed=embed)
 
     except aiohttp.ClientError as e:
         error_msg = f"🚫 Ошибка соединения с Mistral AI API: {str(e)[:500]}"
         await loading_msg.edit(embed=make_embed(
-        "Ошибка соединения", 
-        error_msg + "\n\nПроверьте:\n• Интернет-соединение\n• Доступность api.mistral.ai\n• Настройки прокси (если используются)",
-        color=0xED4245
+            "Ошибка соединения", 
+            error_msg + "\n\nПроверьте:\n• Интернет-соединение\n• Доступность api.mistral.ai\n• Настройки прокси (если используются)",
+            color=0xED4245
         ))
     except Exception as e:
         error_msg = "🚫 Произошла ошибка при обращении к AI."
         error_str = str(e).lower()
         error_full = str(e)
 
-# Обрабатываем специфичные ошибки Mistral AI API
-    if "401" in error_full or "unauthorized" in error_str or "authentication" in error_str:
-        error_msg = "🚫 Неверный API ключ Mistral AI.\n\nПроверьте переменную окружения MISTRAL_API_KEY. Получить ключ: https://console.mistral.ai/api-keys/"
-    elif "429" in error_full or "rate limit" in error_str:
-        error_msg = "⏱️ Превышен лимит запросов. Попробуйте позже."
-    elif "таймаут" in error_str or "timeout" in error_str:
-        error_msg = "⏱️ Превышено время ожидания ответа от API. Попробуйте позже."
-    elif "403" in error_full or "forbidden" in error_str:
-        error_msg = "🚫 Доступ запрещён. Возможные причины:\n• Модель недоступна"
-    elif "model" in error_str and "not found" in error_str:
-        error_msg = "🚫 Модель недоступна в Mistral AI.\n\nПроверьте доступность модели 'mistral-small' или измените MISTRAL_MODEL в коде."
-    elif "invalid" in error_str and "key" in error_str:
-        error_msg = "🚫 Неверный формат API ключа."
-    else:
-        error_msg = f"🚫 Ошибка: {error_full[:500]}"
+        # Обрабатываем специфичные ошибки Mistral AI API
+        if "401" in error_full or "unauthorized" in error_str or "authentication" in error_str:
+            error_msg = "🚫 Неверный API ключ Mistral AI.\n\nПроверьте переменную окружения MISTRAL_API_KEY. Получить ключ: https://console.mistral.ai/api-keys/"
+        elif "429" in error_full or "rate limit" in error_str:
+            error_msg = "⏱️ Превышен лимит запросов. Попробуйте позже."
+        elif "таймаут" in error_str or "timeout" in error_str:
+            error_msg = "⏱️ Превышено время ожидания ответа от API. Попробуйте позже."
+        elif "403" in error_full or "forbidden" in error_str:
+            error_msg = "🚫 Доступ запрещён. Возможные причины:\n• Модель недоступна"
+        elif "model" in error_str and "not found" in error_str:
+            error_msg = "🚫 Модель недоступна в Mistral AI.\n\nПроверьте доступность модели 'mistral-small' или измените MISTRAL_MODEL в коде."
+        elif "invalid" in error_str and "key" in error_str:
+            error_msg = "🚫 Неверный формат API ключа."
+        else:
+            error_msg = f"🚫 Ошибка: {error_full[:500]}"
 
         await loading_msg.edit(embed=make_embed("Ошибка", error_msg, color=0xED4245))
         import traceback
@@ -5808,25 +5816,25 @@ async def setvoice_command(ctx: commands.Context, user_input: str, duration: str
         user_id = member.id
         user_mention = member.mention
     except commands.BadArgument:
-# Если не получилось, пробуем как ID
-    try:
-        user_id = int(user_input.strip().replace("<@", "").replace("!", "").replace(">", ""))
-# Пытаемся получить пользователя для отображения
-    try:
-        user = await ctx.bot.fetch_user(user_id)
-        user_mention = f"<@{user_id}> ({user.name})"
-    except discord.NotFound:
-        user_mention = f"<@{user_id}> (пользователь не найден)"
-    except ValueError:
-        await ctx.send(
-        embed=make_embed(
-        "Неверный формат",
-        "Используй формат `!setvoice @участник ЧЧ.ММ.СС` или `!setvoice <ID> ЧЧ.ММ.СС`\n"
-        "Например: `!setvoice @User 12.30.15` или `!setvoice 123456789012345678 12.30.15`",
-        color=0xFEE75C,
-        )
-        )
-        return
+        # Если не получилось, пробуем как ID
+        try:
+            user_id = int(user_input.strip().replace("<@", "").replace("!", "").replace(">", ""))
+            # Пытаемся получить пользователя для отображения
+            try:
+                user = await ctx.bot.fetch_user(user_id)
+                user_mention = f"<@{user_id}> ({user.name})"
+            except discord.NotFound:
+                user_mention = f"<@{user_id}> (пользователь не найден)"
+        except ValueError:
+            await ctx.send(
+                embed=make_embed(
+                    "Неверный формат",
+                    "Используй формат `!setvoice @участник ЧЧ.ММ.СС` или `!setvoice <ID> ЧЧ.ММ.СС`\n"
+                    "Например: `!setvoice @User 12.30.15` или `!setvoice 123456789012345678 12.30.15`",
+                    color=0xFEE75C,
+                )
+            )
+            return
 
     if user_id is None:
         await ctx.send(
@@ -5949,14 +5957,14 @@ def build_leaderboard_embed(
 
 
 class LevelLeaderboardView(discord.ui.View):
-def __init__(self, ctx: commands.Context, initial_mode: str = "voice"):
-    super().__init__(timeout=180)
-    self.ctx = ctx
-    self.mode = initial_mode
-    self.page = 1
-    self.total_pages = 1
-    self.message: discord.Message | None = None
-    self._sync_button_state()
+    def __init__(self, ctx: commands.Context, initial_mode: str = "voice"):
+        super().__init__(timeout=180)
+        self.ctx = ctx
+        self.mode = initial_mode
+        self.page = 1
+        self.total_pages = 1
+        self.message: discord.Message | None = None
+        self._sync_button_state()
 
 def build_embed(self) -> discord.Embed:
     embed, total_pages = build_leaderboard_embed(self.ctx.guild, self.ctx.author, self.mode, self.page)
@@ -5975,24 +5983,24 @@ def _sync_button_state(self):
     active_custom_id = f"leveltop:{self.mode}"
     for child in self.children:
         if not isinstance(child, discord.ui.Button):
-        continue
-    if child.custom_id in {"leveltop:chat", "leveltop:voice"}:
-        is_active = child.custom_id == active_custom_id
-        child.disabled = is_active
-        child.style = discord.ButtonStyle.primary if is_active else discord.ButtonStyle.secondary
-    elif child.custom_id == "leveltop:prev_page":
-        child.disabled = self.page <= 1
-    elif child.custom_id == "leveltop:next_page":
-        child.disabled = self.page >= self.total_pages
+            continue
+        if child.custom_id in {"leveltop:chat", "leveltop:voice"}:
+            is_active = child.custom_id == active_custom_id
+            child.disabled = is_active
+            child.style = discord.ButtonStyle.primary if is_active else discord.ButtonStyle.secondary
+        elif child.custom_id == "leveltop:prev_page":
+            child.disabled = self.page <= 1
+        elif child.custom_id == "leveltop:next_page":
+            child.disabled = self.page >= self.total_pages
 
 async def switch_mode(self, interaction: discord.Interaction, mode: str):
     if self.mode == mode:
         await interaction.response.defer()
         return
-        self.mode = mode
-        self.page = 1
-        embed = self.build_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
+    self.mode = mode
+    self.page = 1
+    embed = self.build_embed()
+    await interaction.response.edit_message(embed=embed, view=self)
 
 async def change_page(self, interaction: discord.Interaction, delta: int):
     new_page = self.page + delta
@@ -6007,10 +6015,10 @@ async def change_page(self, interaction: discord.Interaction, delta: int):
 async def on_timeout(self):
     if self.message:
         for child in self.children:
-        if isinstance(child, discord.ui.Button):
-        child.disabled = True
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
         with contextlib.suppress(discord.HTTPException):
-        await self.message.edit(view=self)
+            await self.message.edit(view=self)
 
 @discord.ui.button(label="Опыт", style=discord.ButtonStyle.secondary, custom_id="leveltop:chat", row=0)
 async def chat_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -6065,36 +6073,36 @@ async def achievements_command(ctx: commands.Context, member: discord.Member | N
         )
 
     if unlocked_ids:
-# Группируем по редкости
+        # Группируем по редкости
         by_rarity = {}
         all_achievements = get_all_achievements()
-    for ach_id in unlocked_ids:
-        if ach_id in all_achievements:
-        ach = all_achievements[ach_id]
-        rarity = ach["rarity"]
-    if rarity not in by_rarity:
-        by_rarity[rarity] = []
-        by_rarity[rarity].append(ach)
+        for ach_id in unlocked_ids:
+            if ach_id in all_achievements:
+                ach = all_achievements[ach_id]
+                rarity = ach["rarity"]
+                if rarity not in by_rarity:
+                    by_rarity[rarity] = []
+                by_rarity[rarity].append(ach)
 
         rarity_order = ["legendary", "epic", "rare", "uncommon", "common", "secret"]
-    for rarity in rarity_order:
-        if rarity in by_rarity:
-        ach_list = by_rarity[rarity]
-        value = "\n".join([f"{ach['emoji']} **{ach['name']}**" for ach in ach_list])
-        rarity_name = {
-        "common": "Обычные",
-        "uncommon": "Необычные",
-        "rare": "Редкие",
-        "epic": "Эпические",
-        "legendary": "Легендарные",
-        "secret": "Секретные"
-        }.get(rarity, rarity.capitalize())
-        embed.add_field(name=rarity_name, value=value, inline=False)
+        for rarity in rarity_order:
+            if rarity in by_rarity:
+                ach_list = by_rarity[rarity]
+                value = "\n".join([f"{ach['emoji']} **{ach['name']}**" for ach in ach_list])
+                rarity_name = {
+                    "common": "Обычные",
+                    "uncommon": "Необычные",
+                    "rare": "Редкие",
+                    "epic": "Эпические",
+                    "legendary": "Легендарные",
+                    "secret": "Секретные"
+                }.get(rarity, rarity.capitalize())
+                embed.add_field(name=rarity_name, value=value, inline=False)
     else:
         embed.description = "Пока нет разблокированных достижений. Будьте активны!"
 
-        embed.set_thumbnail(url=member.display_avatar.url)
-        await ctx.send(embed=embed)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
 
 
 @bot.command(name="badges")
@@ -6239,82 +6247,82 @@ async def asynx_command(ctx: commands.Context):
         akemi_sync_data[channel_id] = {}
 
     try:
-# Отправляем команду /leaderboard через вебхук или напрямую
-    try:
-# Создаем вебхук для отправки команды от имени бота
-        webhook = await ctx.channel.create_webhook(name="Akemi Sync")
-        await webhook.send("/leaderboard", username=ctx.author.display_name, avatar_url=ctx.author.display_avatar.url)
-        await webhook.delete()
-    except Exception:
-# Если не получилось через вебхук, просто отправляем сообщение
-        await ctx.send("`/leaderboard`")
+        # Отправляем команду /leaderboard через вебхук или напрямую
+        try:
+            # Создаем вебхук для отправки команды от имени бота
+            webhook = await ctx.channel.create_webhook(name="Akemi Sync")
+            await webhook.send("/leaderboard", username=ctx.author.display_name, avatar_url=ctx.author.display_avatar.url)
+            await webhook.delete()
+        except Exception:
+            # Если не получилось через вебхук, просто отправляем сообщение
+            await ctx.send("`/leaderboard`")
 
-# Ждем ответ от бота Akemi (таймаут 30 секунд)
-    try:
-        await asyncio.wait_for(event.wait(), timeout=30.0)
-    except asyncio.TimeoutError:
-# Очищаем ожидание
-        akemi_sync_waiters.pop(channel_id, None)
-        akemi_sync_data.pop(channel_id, None)
-        await ctx.send(embed=make_embed(
-        "⏱️ Таймаут",
-        "Не получен ответ от бота Akemi в течение 30 секунд.\n"
-        "Убедитесь, что бот Akemi активен и может отвечать в этом канале.",
-        color=0xED4245
-        ))
-        return
+        # Ждем ответ от бота Akemi (таймаут 30 секунд)
+        try:
+            await asyncio.wait_for(event.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            # Очищаем ожидание
+            akemi_sync_waiters.pop(channel_id, None)
+            akemi_sync_data.pop(channel_id, None)
+            await ctx.send(embed=make_embed(
+                "⏱️ Таймаут",
+                "Не получен ответ от бота Akemi в течение 30 секунд.\n"
+                "Убедитесь, что бот Akemi активен и может отвечать в этом канале.",
+                color=0xED4245
+            ))
+            return
 
-# Получаем данные
+        # Получаем данные
         synced_data = akemi_sync_data.pop(channel_id, {})
         akemi_sync_waiters.pop(channel_id, None)
 
-    if not synced_data:
-        await ctx.send(embed=make_embed(
-        "❌ Ошибка",
-        "Не удалось распарсить данные из ответа бота Akemi.\n"
-        "Убедитесь, что бот Akemi отправил лидерборд в правильном формате.",
-        color=0xED4245
+        if not synced_data:
+            await ctx.send(embed=make_embed(
+                "❌ Ошибка",
+                "Не удалось распарсить данные из ответа бота Akemi.\n"
+                "Убедитесь, что бот Akemi отправил лидерборд в правильном формате.",
+                color=0xED4245
         ))
-        return
+            return
 
-# Обновляем levels.json
+        # Обновляем levels.json
         updated_count = 0
-    for user_id, stats in synced_data.items():
-        user_id_str = str(user_id)
-    if user_id_str not in levels_data:
-        levels_data[user_id_str] = {}
+        for user_id, stats in synced_data.items():
+            user_id_str = str(user_id)
+            if user_id_str not in levels_data:
+                levels_data[user_id_str] = {}
 
-# Обновляем данные, сохраняя существующие если новые меньше
-        existing_chat_xp = levels_data[user_id_str].get("chat_xp", 0)
-        existing_voice_xp = levels_data[user_id_str].get("voice_xp", 0)
-        existing_voice_seconds = levels_data[user_id_str].get("voice_seconds", 0)
+            # Обновляем данные, сохраняя существующие если новые меньше
+            existing_chat_xp = levels_data[user_id_str].get("chat_xp", 0)
+            existing_voice_xp = levels_data[user_id_str].get("voice_xp", 0)
+            existing_voice_seconds = levels_data[user_id_str].get("voice_seconds", 0)
 
-# Используем максимальные значения
-        levels_data[user_id_str]["chat_xp"] = max(existing_chat_xp, stats["chat_xp"])
-        levels_data[user_id_str]["voice_xp"] = max(existing_voice_xp, stats["voice_xp"])
-        levels_data[user_id_str]["voice_seconds"] = max(existing_voice_seconds, stats["voice_seconds"])
-        levels_data[user_id_str]["voice_time"] = stats["voice_time"]
+            # Используем максимальные значения
+            levels_data[user_id_str]["chat_xp"] = max(existing_chat_xp, stats["chat_xp"])
+            levels_data[user_id_str]["voice_xp"] = max(existing_voice_xp, stats["voice_xp"])
+            levels_data[user_id_str]["voice_seconds"] = max(existing_voice_seconds, stats["voice_seconds"])
+            levels_data[user_id_str]["voice_time"] = stats["voice_time"]
 
-        updated_count += 1
+            updated_count += 1
 
-# Сохраняем изменения
+        # Сохраняем изменения
         save_levels()
 
         await ctx.send(embed=make_embed(
-        "✅ Синхронизация завершена",
-        f"Обновлено данных для **{updated_count}** пользователей.\n"
-        f"Данные сохранены в `levels.json`.",
-        color=0x57F287
+            "✅ Синхронизация завершена",
+            f"Обновлено данных для **{updated_count}** пользователей.\n"
+            f"Данные сохранены в `levels.json`.",
+            color=0x57F287
         ))
 
     except Exception as e:
-# Очищаем ожидание в случае ошибки
+        # Очищаем ожидание в случае ошибки
         akemi_sync_waiters.pop(channel_id, None)
         akemi_sync_data.pop(channel_id, None)
         await ctx.send(embed=make_embed(
-        "❌ Ошибка",
-        f"Произошла ошибка при синхронизации: {e}",
-        color=0xED4245
+            "❌ Ошибка",
+            f"Произошла ошибка при синхронизации: {e}",
+            color=0xED4245
         ))
 
 
@@ -6344,13 +6352,13 @@ async def rankcard_command(ctx: commands.Context, member: discord.Member | None 
 
 # Преобразуем цвет из hex в int
         bg_color_str = rankcard_settings.get("background_color", "#5865F2")
-    try:
-        if bg_color_str.startswith("#"):
-        bg_color = int(bg_color_str[1:], 16)
-    else:
-        bg_color = int(bg_color_str.replace("#", ""), 16) if "#" in bg_color_str else 0x5865F2
-    except ValueError:
-        bg_color = 0x5865F2
+        try:
+            if bg_color_str.startswith("#"):
+                bg_color = int(bg_color_str[1:], 16)
+            else:
+                bg_color = int(bg_color_str.replace("#", ""), 16) if "#" in bg_color_str else 0x5865F2
+        except ValueError:
+            bg_color = 0x5865F2
 
 # Создаем embed с карточкой ранга
         embed = discord.Embed(
@@ -6401,18 +6409,18 @@ async def rankcard_command(ctx: commands.Context, member: discord.Member | None 
         inline=True
         )
 
-# Ранг в рейтинге
-    try:
-        sorted_users = sorted(
-        ((user_id, data.get("chat_xp", 0)) for user_id, data in levels_data.items()),
-        key=lambda item: item[1],
-        reverse=True
-        )
-        user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if int(uid) == member.id), None)
-    if user_rank:
-        embed.add_field(name="📈 Ранг", value=f"#{user_rank}", inline=True)
-    except Exception:
-        pass
+        # Ранг в рейтинге
+        try:
+            sorted_users = sorted(
+                ((user_id, data.get("chat_xp", 0)) for user_id, data in levels_data.items()),
+                key=lambda item: item[1],
+                reverse=True
+            )
+            user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if int(uid) == member.id), None)
+            if user_rank:
+                embed.add_field(name="📈 Ранг", value=f"#{user_rank}", inline=True)
+        except Exception:
+            pass
 
         embed.set_footer(text=f"Используйте !rankcard-customize для настройки карточки")
         await ctx.send(embed=embed)
@@ -6723,31 +6731,31 @@ async def badlist_command(ctx: commands.Context):
         color=0x5865F2
         )
 
-# Группируем по редкости
+        # Группируем по редкости
         by_rarity = {}
-    for ach_id, ach in custom_achievements.items():
-        rarity = ach.get("rarity", "common")
-    if rarity not in by_rarity:
-        by_rarity[rarity] = []
-        by_rarity[rarity].append((ach_id, ach))
+        for ach_id, ach in custom_achievements.items():
+            rarity = ach.get("rarity", "common")
+            if rarity not in by_rarity:
+                by_rarity[rarity] = []
+            by_rarity[rarity].append((ach_id, ach))
 
         rarity_order = ["legendary", "epic", "rare", "uncommon", "common", "secret"]
-    for rarity in rarity_order:
-        if rarity in by_rarity:
-        ach_list = by_rarity[rarity]
-        value = "\n".join([
-        f"{ach['emoji']} **{ach['name']}** (`{ach_id}`)"
-    for ach_id, ach in ach_list
-        ])
-        rarity_name = {
-        "common": "Обычные",
-        "uncommon": "Необычные",
-        "rare": "Редкие",
-        "epic": "Эпические",
-        "legendary": "Легендарные",
-        "secret": "Секретные"
-        }.get(rarity, rarity.capitalize())
-        embed.add_field(name=rarity_name, value=value[:1024], inline=False)
+        for rarity in rarity_order:
+            if rarity in by_rarity:
+                ach_list = by_rarity[rarity]
+                value = "\n".join([
+                    f"{ach['emoji']} **{ach['name']}** (`{ach_id}`)"
+                    for ach_id, ach in ach_list
+                ])
+                rarity_name = {
+                    "common": "Обычные",
+                    "uncommon": "Необычные",
+                    "rare": "Редкие",
+                    "epic": "Эпические",
+                    "legendary": "Легендарные",
+                    "secret": "Секретные"
+                }.get(rarity, rarity.capitalize())
+                embed.add_field(name=rarity_name, value=value[:1024], inline=False)
 
         await ctx.send(embed=embed)
 
@@ -7214,24 +7222,24 @@ def check_achievements(member: discord.Member):
     if estimated_messages >= 10000 and unlock_achievement(member.id, "messages_10000"):
         unlocked_new.append("messages_10000")
 
-# Проверка топ-10 и топ-1 (требует проверки рейтинга)
+    # Проверка топ-10 и топ-1 (требует проверки рейтинга)
     if member.guild:
         try:
-        sorted_users = sorted(
-        ((user_id, data.get("chat_xp", 0)) for user_id, data in levels_data.items()),
-        key=lambda item: item[1],
-        reverse=True
-        )
-        user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if int(uid) == member.id), None)
-    if user_rank:
-        if user_rank <= 10 and unlock_achievement(member.id, "top_10"):
-        unlocked_new.append("top_10")
-    if user_rank == 1 and unlock_achievement(member.id, "top_1"):
-        unlocked_new.append("top_1")
-    except Exception:
-        pass
+            sorted_users = sorted(
+                ((user_id, data.get("chat_xp", 0)) for user_id, data in levels_data.items()),
+                key=lambda item: item[1],
+                reverse=True
+            )
+            user_rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if int(uid) == member.id), None)
+            if user_rank:
+                if user_rank <= 10 and unlock_achievement(member.id, "top_10"):
+                    unlocked_new.append("top_10")
+                if user_rank == 1 and unlock_achievement(member.id, "top_1"):
+                    unlocked_new.append("top_1")
+        except Exception:
+            pass
 
-        return unlocked_new
+    return unlocked_new
 
 
 def save_rankcards():
@@ -7260,39 +7268,39 @@ def get_user_rankcard(user_id: int) -> dict:
 async def setup_hook():
     try:
         print("[Setup] Инициализация компонентов бота...")
-    for generator in voice_config.get("generators", []):
-        gen_id = generator.get("generator_channel_id")
-    if gen_id:
+        for generator in voice_config.get("generators", []):
+            gen_id = generator.get("generator_channel_id")
+            if gen_id:
+                try:
+                    # Проверяем существование канала генератора
+                    channel = bot.get_channel(gen_id)
+                    if channel:
+                        get_voice_view(gen_id)
+                        print(f"[Setup] Инициализирован генератор голосовых комнат: {gen_id}")
+                    else:
+                        print(f"[Voice] Предупреждение: канал генератора {gen_id} не найден при запуске.")
+                except Exception as e:
+                    print(f"[Setup] Ошибка при инициализации генератора {gen_id}: {e}")
+
+        for channel_id in tickets_config.get("tickets", {}).keys():
+            try:
+                get_ticket_view(int(channel_id))
+                print(f"[Setup] Инициализирован тикет: {channel_id}")
+            except Exception as e:
+                print(f"[Setup] Ошибка при инициализации тикета {channel_id}: {e}")
+
         try:
-# Проверяем существование канала генератора
-        channel = bot.get_channel(gen_id)
-    if channel:
-        get_voice_view(gen_id)
-        print(f"[Setup] Инициализирован генератор голосовых комнат: {gen_id}")
-    else:
-        print(f"[Voice] Предупреждение: канал генератора {gen_id} не найден при запуске.")
-    except Exception as e:
-        print(f"[Setup] Ошибка при инициализации генератора {gen_id}: {e}")
+            bot.add_view(TicketPanelView())
+            print("[Setup] Инициализирована панель тикетов")
+        except Exception as e:
+            print(f"[Setup] Ошибка при инициализации панели тикетов: {e}")
 
-    for channel_id in tickets_config.get("tickets", {}).keys():
+        # Синхронизация application commands
         try:
-        get_ticket_view(int(channel_id))
-        print(f"[Setup] Инициализирован тикет: {channel_id}")
-    except Exception as e:
-        print(f"[Setup] Ошибка при инициализации тикета {channel_id}: {e}")
-
-    try:
-        bot.add_view(TicketPanelView())
-        print("[Setup] Инициализирована панель тикетов")
-    except Exception as e:
-        print(f"[Setup] Ошибка при инициализации панели тикетов: {e}")
-
-# Синхронизация application commands
-    try:
-        synced = await bot.tree.sync()
-        print(f"[Setup] Синхронизировано {len(synced)} application команд")
-    except Exception as e:
-        print(f"[Setup] Ошибка при синхронизации команд: {e}")
+            synced = await bot.tree.sync()
+            print(f"[Setup] Синхронизировано {len(synced)} application команд")
+        except Exception as e:
+            print(f"[Setup] Ошибка при синхронизации команд: {e}")
 
         print("[Setup] Инициализация завершена")
     except Exception as e:
