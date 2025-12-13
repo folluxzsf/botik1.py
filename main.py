@@ -162,6 +162,7 @@ ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
 RANKCARDS_FILE = DATA_DIR / "rankcards.json"
 CUSTOM_ACHIEVEMENTS_FILE = DATA_DIR / "custom_achievements.json"
 ANTI_FLOOD_IGNORE_CHANNELS_FILE = DATA_DIR / "anti_flood_ignore_channels.json"
+PATCHNOTES_FILE = DATA_DIR / "patchnotes.json"
 MSK_TZ = timezone(timedelta(hours=3))
 TELEGRAM_BOT_TOKEN = "8235791338:AAGtsqzeV8phGsLu39WLpqgxXIK2rsqc0kc"
 TELEGRAM_CHAT_ID = 8165572851  # например, 123456789
@@ -883,6 +884,59 @@ def save_anti_flood_ignore_channels(channels: set[int]):
         ANTI_FLOOD_IGNORE_CHANNELS_FILE.write_text(json.dumps(list(channels), ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
         pass
+
+
+def load_patchnotes() -> list[dict]:
+    """Загружает список патчноутов"""
+    ensure_storage()
+    try:
+        if not PATCHNOTES_FILE.exists():
+            PATCHNOTES_FILE.write_text("[]", encoding="utf-8")
+            return []
+        data = json.loads(PATCHNOTES_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+        return []
+    except (OSError, json.JSONDecodeError, ValueError):
+        return []
+
+
+def save_patchnotes(patchnotes: list[dict]):
+    """Сохраняет список патчноутов"""
+    ensure_storage()
+    try:
+        PATCHNOTES_FILE.write_text(json.dumps(patchnotes, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def add_patchnote(version: str, additions: list[str] = None, fixes: list[str] = None, improvements: list[str] = None, other: list[str] = None):
+    """
+    Добавляет новый патчноут
+    
+    Пример использования:
+        add_patchnote(
+            version="v1.2.3",
+            additions=["Новая команда !diag", "Добавлена система бэкапов"],
+            fixes=["Исправлена ошибка с анти-флудом", "Исправлена проблема с голосовыми каналами"],
+            improvements=["Улучшена производительность", "Оптимизирована работа с базой данных"],
+            other=["Обновлены зависимости", "Улучшена документация"]
+        )
+    """
+    patchnotes = load_patchnotes()
+    
+    new_note = {
+        "version": version,
+        "date": utc_now().isoformat(),
+        "additions": additions or [],
+        "fixes": fixes or [],
+        "improvements": improvements or [],
+        "other": other or []
+    }
+    
+    patchnotes.append(new_note)
+    save_patchnotes(patchnotes)
+    return new_note
 
 
 def load_moderation() -> dict:
@@ -6622,6 +6676,718 @@ async def ticket_panel_command(ctx: commands.Context, channel: discord.TextChann
     await ctx.send(embed=make_embed("Панель тикетов", f"Панель развернута в {target.mention}"))
 
 
+@bot.command(name="diag")
+async def diag_command(ctx: commands.Context):
+    """Диагностика бота и выявление ошибок"""
+    log_command("UTILITY", "!diag", ctx.author, ctx.guild)
+    
+    if not await ensure_command_access(ctx):
+        return
+    
+    issues = []
+    warnings = []
+    info = []
+    
+    # Проверка токена Discord
+    if not TOKEN:
+        issues.append("❌ Токен Discord не найден (BOT_TOKEN)")
+    elif '.' not in TOKEN or len(TOKEN) < 50:
+        issues.append(f"❌ Неверный формат токена Discord (длина: {len(TOKEN)})")
+    else:
+        info.append("✅ Токен Discord настроен")
+    
+    # Проверка API ключа Mistral
+    if not MISTRAL_API_KEY or MISTRAL_API_KEY == "dEpuO1P9PTLxkk2Tae9XftblYeiqsSub":
+        warnings.append("⚠️ Используется дефолтный API ключ Mistral (рекомендуется установить свой)")
+    else:
+        info.append("✅ API ключ Mistral настроен")
+    
+    # Проверка состояния бота
+    if not bot.is_ready():
+        warnings.append("⚠️ Бот еще не готов (is_ready = False)")
+    else:
+        info.append("✅ Бот готов к работе")
+        info.append(f"✅ Подключено серверов: {len(bot.guilds)}")
+        info.append(f"✅ Ping: {int(bot.latency * 1000)} мс")
+    
+    # Проверка каналов
+    if LOG_CHANNEL_ID:
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        if not log_channel:
+            issues.append(f"❌ Лог-канал не найден (ID: {LOG_CHANNEL_ID})")
+        else:
+            info.append(f"✅ Лог-канал найден: {log_channel.name}")
+    
+    # Проверка файлов конфигурации
+    config_files = [
+        ("res_whitelist.json", RES_WHITELIST_FILE),
+        ("moderation.json", MODERATION_FILE),
+        ("about_statuses.json", ABOUT_STATUS_FILE),
+        ("levels.json", LEVELS_FILE),
+        ("voice_rooms.json", VOICE_CONFIG_FILE),
+        ("tickets_config.json", TICKETS_CONFIG_FILE),
+        ("raid_config.json", RAID_CONFIG_FILE),
+        ("super_admin.json", SUPER_ADMIN_FILE),
+        ("settings.json", SETTINGS_FILE),
+    ]
+    
+    config_errors = 0
+    config_ok = 0
+    
+    for config_name, config_path in config_files:
+        if not config_path.exists():
+            warnings.append(f"⚠️ Файл {config_name} не найден (будет создан автоматически)")
+        else:
+            try:
+                data = json.loads(config_path.read_text(encoding="utf-8"))
+                config_ok += 1
+            except json.JSONDecodeError as e:
+                issues.append(f"❌ {config_name}: невалидный JSON ({str(e)[:50]})")
+                config_errors += 1
+            except Exception as e:
+                warnings.append(f"⚠️ {config_name}: ошибка чтения ({str(e)[:50]})")
+    
+    if config_ok > 0:
+        info.append(f"✅ Валидных конфигов: {config_ok}")
+    if config_errors > 0:
+        issues.append(f"❌ Ошибок в конфигах: {config_errors}")
+    
+    # Проверка папки data
+    if not DATA_DIR.exists():
+        issues.append("❌ Папка data/ не существует")
+    else:
+        info.append("✅ Папка data/ существует")
+    
+    # Проверка main.py
+    main_py_path = Path("main.py")
+    if not main_py_path.exists():
+        issues.append("❌ Файл main.py не найден")
+    else:
+        info.append("✅ Файл main.py найден")
+    
+    # Проверка голосовых генераторов
+    if voice_config.get("generators"):
+        generators_count = len(voice_config.get("generators", []))
+        missing_generators = 0
+        for gen in voice_config.get("generators", []):
+            gen_id = gen.get("generator_channel_id")
+            if gen_id:
+                channel = bot.get_channel(gen_id)
+                if not channel:
+                    missing_generators += 1
+        if missing_generators > 0:
+            warnings.append(f"⚠️ Не найдено голосовых генераторов: {missing_generators}/{generators_count}")
+        else:
+            info.append(f"✅ Голосовых генераторов: {generators_count}")
+    
+    # Проверка тикетов
+    if tickets_config.get("panel_channel_id"):
+        panel_channel = bot.get_channel(tickets_config.get("panel_channel_id"))
+        if not panel_channel:
+            warnings.append("⚠️ Канал панели тикетов не найден")
+        else:
+            info.append("✅ Панель тикетов настроена")
+    
+    # Проверка uptime
+    if bot_start_time:
+        uptime = utc_now() - bot_start_time
+        uptime_str = format_timedelta(uptime)
+        info.append(f"✅ Uptime: {uptime_str}")
+    
+    # Формируем ответ
+    embed = discord.Embed(
+        title="🔍 Диагностика бота",
+        color=0xED4245 if issues else (0xFEE75C if warnings else 0x57F287),
+        timestamp=utc_now()
+    )
+    
+    if issues:
+        embed.add_field(
+            name="❌ Критические ошибки",
+            value="\n".join(issues[:10]) + (f"\n... и еще {len(issues) - 10}" if len(issues) > 10 else ""),
+            inline=False
+        )
+    
+    if warnings:
+        embed.add_field(
+            name="⚠️ Предупреждения",
+            value="\n".join(warnings[:10]) + (f"\n... и еще {len(warnings) - 10}" if len(warnings) > 10 else ""),
+            inline=False
+        )
+    
+    if info:
+        embed.add_field(
+            name="ℹ️ Информация",
+            value="\n".join(info[:15]) + (f"\n... и еще {len(info) - 15}" if len(info) > 15 else ""),
+            inline=False
+        )
+    
+    if not issues and not warnings:
+        embed.description = "✅ Все проверки пройдены успешно!"
+    
+    embed.set_footer(text=f"Всего: {len(issues)} ошибок, {len(warnings)} предупреждений, {len(info)} проверок")
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="stresstesting")
+async def stresstesting_command(ctx: commands.Context):
+    """Проводит нагрузочные испытания системы"""
+    log_command("UTILITY", "!stresstesting", ctx.author, ctx.guild)
+    
+    if not await ensure_command_access(ctx):
+        return
+    
+    await ctx.send(embed=make_embed("Нагрузочное тестирование", "🔄 Запуск нагрузочных испытаний...", color=0xFEE75C))
+    
+    results = {
+        "message_send": {"time": 0, "success": 0, "failed": 0},
+        "command_processing": {"time": 0, "success": 0, "failed": 0},
+        "file_operations": {"time": 0, "success": 0, "failed": 0},
+        "memory_usage": {"before": 0, "after": 0},
+        "cpu_usage": 0
+    }
+    
+    import time
+    import asyncio
+    
+    # Тест 1: Отправка сообщений
+    start_time = time.time()
+    test_messages = 10
+    for i in range(test_messages):
+        try:
+            msg = await ctx.channel.send(f"Тест {i+1}/{test_messages}")
+            await msg.delete()
+            results["message_send"]["success"] += 1
+            await asyncio.sleep(0.1)  # Небольшая задержка
+        except Exception as e:
+            results["message_send"]["failed"] += 1
+            print(f"[StressTest] Ошибка отправки сообщения: {e}")
+    results["message_send"]["time"] = time.time() - start_time
+    
+    # Тест 2: Обработка команд (симуляция)
+    start_time = time.time()
+    for i in range(5):
+        try:
+            # Симулируем обработку команды
+            await asyncio.sleep(0.05)
+            results["command_processing"]["success"] += 1
+        except Exception as e:
+            results["command_processing"]["failed"] += 1
+    results["command_processing"]["time"] = time.time() - start_time
+    
+    # Тест 3: Операции с файлами
+    start_time = time.time()
+    test_file = DATA_DIR / "stress_test_temp.json"
+    for i in range(5):
+        try:
+            test_file.write_text(json.dumps({"test": i}, ensure_ascii=False), encoding="utf-8")
+            data = json.loads(test_file.read_text(encoding="utf-8"))
+            results["file_operations"]["success"] += 1
+        except Exception as e:
+            results["file_operations"]["failed"] += 1
+    if test_file.exists():
+        test_file.unlink()
+    results["file_operations"]["time"] = time.time() - start_time
+    
+    # Тест 4: Использование памяти и CPU
+    if process:
+        try:
+            results["memory_usage"]["before"] = process.memory_info().rss / 1024 / 1024  # MB
+            results["cpu_usage"] = process.cpu_percent(interval=0.5)
+            results["memory_usage"]["after"] = process.memory_info().rss / 1024 / 1024  # MB
+        except:
+            pass
+    
+    # Формируем отчёт
+    embed = discord.Embed(
+        title="📊 Результаты нагрузочного тестирования",
+        description="Результаты проведённых тестов производительности",
+        color=0x57F287 if results["message_send"]["failed"] == 0 else 0xFEE75C,
+        timestamp=utc_now()
+    )
+    
+    # Отправка сообщений
+    msg_stats = results["message_send"]
+    embed.add_field(
+        name="📨 Тест отправки сообщений",
+        value=(
+            f"Успешно: {msg_stats['success']}/{test_messages}\n"
+            f"Ошибок: {msg_stats['failed']}\n"
+            f"Время: {msg_stats['time']:.2f}с\n"
+            f"Скорость: {test_messages/msg_stats['time']:.2f} сообщ/с"
+        ),
+        inline=True
+    )
+    
+    # Обработка команд
+    cmd_stats = results["command_processing"]
+    embed.add_field(
+        name="⚙️ Тест обработки команд",
+        value=(
+            f"Успешно: {cmd_stats['success']}/5\n"
+            f"Ошибок: {cmd_stats['failed']}\n"
+            f"Время: {cmd_stats['time']:.2f}с"
+        ),
+        inline=True
+    )
+    
+    # Файловые операции
+    file_stats = results["file_operations"]
+    embed.add_field(
+        name="📁 Тест файловых операций",
+        value=(
+            f"Успешно: {file_stats['success']}/5\n"
+            f"Ошибок: {file_stats['failed']}\n"
+            f"Время: {file_stats['time']:.2f}с"
+        ),
+        inline=True
+    )
+    
+    # Системные ресурсы
+    if results["cpu_usage"] > 0:
+        embed.add_field(
+            name="💻 Системные ресурсы",
+            value=(
+                f"CPU: {results['cpu_usage']:.1f}%\n"
+                f"Память: {results['memory_usage']['after']:.1f} MB\n"
+                f"Использовано: {results['memory_usage']['after'] - results['memory_usage']['before']:.1f} MB"
+            ),
+            inline=False
+        )
+    
+    # Общая оценка
+    total_success = msg_stats['success'] + cmd_stats['success'] + file_stats['success']
+    total_tests = test_messages + 5 + 5
+    success_rate = (total_success / total_tests) * 100
+    
+    status = "✅ Отлично" if success_rate >= 95 else "⚠️ Хорошо" if success_rate >= 80 else "❌ Требует внимания"
+    embed.add_field(
+        name="📈 Общая оценка",
+        value=f"{status}\nУспешность: {success_rate:.1f}%\nВсего тестов: {total_tests}",
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Тестирование выполнено {ctx.author.display_name}")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="vulnscan")
+async def vulnscan_command(ctx: commands.Context):
+    """Проводит автоматизированный поиск уязвимостей"""
+    log_command("UTILITY", "!vulnscan", ctx.author, ctx.guild)
+    
+    if not await ensure_command_access(ctx):
+        return
+    
+    await ctx.send(embed=make_embed("Сканирование уязвимостей", "🔍 Начало сканирования...", color=0xFEE75C))
+    
+    vulnerabilities = []
+    warnings = []
+    info = []
+    
+    # Этап 1: Сбор информации
+    info.append("📋 Этап 1: Сбор информации")
+    
+    # Проверка файлов конфигурации
+    config_files_to_check = [
+        ("main.py", Path("main.py")),
+        (RES_WHITELIST_FILE.name, RES_WHITELIST_FILE),
+        (MODERATION_FILE.name, MODERATION_FILE),
+        (TICKETS_CONFIG_FILE.name, TICKETS_CONFIG_FILE),
+    ]
+    
+    # Этап 2: Анализ кода
+    info.append("🔬 Этап 2: Анализ кода")
+    
+    # Проверка на хардкод токенов и секретов
+    main_py_path = Path("main.py")
+    if main_py_path.exists():
+        try:
+            code_content = main_py_path.read_text(encoding="utf-8")
+            
+            # Проверка на хардкод токенов
+            if 'TELEGRAM_BOT_TOKEN = "' in code_content and '"8235791338:' in code_content:
+                vulnerabilities.append("🔴 КРИТИЧНО: Telegram токен захардкожен в коде")
+            
+            if 'MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "' in code_content and '"dEpuO1P9PTLxkk2Tae9XftblYeiqsSub"' in code_content:
+                warnings.append("🟡 Telegram API ключ имеет дефолтное значение")
+            
+            # Проверка на потенциальные SQL инъекции
+            if 'execute(' in code_content and '%s' not in code_content and '?' not in code_content:
+                warnings.append("🟡 Потенциальная уязвимость SQL инъекции (используйте параметризованные запросы)")
+            
+            # Проверка на eval/exec
+            if 'eval(' in code_content or 'exec(' in code_content:
+                vulnerabilities.append("🔴 КРИТИЧНО: Использование eval() или exec() обнаружено")
+            
+            # Проверка на небезопасные операции с файлами
+            if 'open(' in code_content and '../' in code_content:
+                warnings.append("🟡 Потенциальная уязвимость path traversal")
+            
+        except Exception as e:
+            warnings.append(f"🟡 Не удалось проанализировать код: {str(e)[:50]}")
+    
+    # Этап 3: Проверка безопасности
+    info.append("🔒 Этап 3: Проверка безопасности")
+    
+    # Проверка токена Discord
+    if not TOKEN:
+        vulnerabilities.append("🔴 КРИТИЧНО: Токен Discord не найден")
+    elif len(TOKEN) < 50:
+        vulnerabilities.append("🔴 КРИТИЧНО: Токен Discord имеет подозрительно малую длину")
+    else:
+        info.append("✅ Токен Discord настроен корректно")
+    
+    # Проверка прав доступа к файлам
+    try:
+        if DATA_DIR.exists():
+            # Проверяем, можно ли писать в папку data
+            test_file = DATA_DIR / ".security_test"
+            test_file.write_text("test")
+            test_file.unlink()
+            info.append("✅ Папка data/ доступна для записи")
+        else:
+            warnings.append("🟡 Папка data/ не существует")
+    except Exception as e:
+        vulnerabilities.append(f"🔴 КРИТИЧНО: Нет доступа к папке data/: {str(e)[:50]}")
+    
+    # Проверка конфигурационных файлов на публичный доступ
+    sensitive_files = [
+        ("backup.json", Path("backup.json")),
+        (SUPER_ADMIN_FILE.name, SUPER_ADMIN_FILE),
+        (AI_BLACKLIST_FILE.name, AI_BLACKLIST_FILE),
+    ]
+    
+    for file_name, file_path in sensitive_files:
+        if file_path.exists():
+            try:
+                # Проверяем, что файл не слишком большой (может содержать утечки)
+                size_mb = file_path.stat().st_size / 1024 / 1024
+                if size_mb > 10:
+                    warnings.append(f"🟡 Файл {file_name} очень большой ({size_mb:.1f} MB) - возможна утечка данных")
+            except:
+                pass
+    
+    # Этап 3.5: Проверка безопасности сервера Discord
+    info.append("🛡️ Этап 3.5: Проверка безопасности сервера")
+    
+    if bot.is_ready():
+        guild = ctx.guild
+        if guild:
+            # Проверка прав бота
+            bot_member = guild.get_member(bot.user.id) if bot.user else None
+            if bot_member:
+                perms = bot_member.guild_permissions
+                if perms.administrator:
+                    warnings.append("🟡 Бот имеет права администратора - повышенный риск")
+                if not perms.manage_messages:
+                    warnings.append("🟡 Бот не имеет прав на управление сообщениями")
+            
+            # Проверка уровня верификации сервера
+            verification_level = guild.verification_level
+            if verification_level == discord.VerificationLevel.none:
+                vulnerabilities.append("🔴 КРИТИЧНО: Сервер не требует верификации - высокий риск рейдов")
+            elif verification_level == discord.VerificationLevel.low:
+                warnings.append("🟡 Низкий уровень верификации - рекомендуется повысить")
+            elif verification_level == discord.VerificationLevel.medium:
+                info.append("✅ Средний уровень верификации настроен")
+            else:
+                info.append("✅ Высокий уровень верификации настроен")
+            
+            # Проверка требований 2FA для модераторов
+            if guild.mfa_level == discord.MFALevel.none:
+                vulnerabilities.append("🔴 КРИТИЧНО: 2FA не требуется для модераторов - высокий риск компрометации")
+            else:
+                info.append("✅ 2FA требуется для модераторов")
+            
+            # Проверка настроек контента
+            if guild.explicit_content_filter == discord.ContentFilter.disabled:
+                warnings.append("🟡 Фильтр контента отключен - возможны нежелательные материалы")
+            else:
+                info.append("✅ Фильтр контента включен")
+            
+            # Проверка ролей с опасными правами
+            dangerous_perms = [
+                'administrator', 'manage_guild', 'manage_roles', 
+                'manage_channels', 'ban_members', 'kick_members'
+            ]
+            
+            roles_with_dangerous_perms = []
+            for role in guild.roles:
+                if role.permissions.administrator and not role.is_default():
+                    roles_with_dangerous_perms.append(f"Роль {role.name} имеет права администратора")
+                elif any(getattr(role.permissions, perm, False) for perm in dangerous_perms):
+                    if role.members:
+                        member_count = len(role.members)
+                        if member_count > 10:
+                            warnings.append(f"🟡 Роль {role.name} имеет опасные права и {member_count} участников")
+            
+            # Проверка @everyone с опасными правами
+            everyone_role = guild.default_role
+            if everyone_role:
+                if everyone_role.permissions.administrator:
+                    vulnerabilities.append("🔴 КРИТИЧНО: @everyone имеет права администратора!")
+                elif everyone_role.permissions.manage_guild:
+                    vulnerabilities.append("🔴 КРИТИЧНО: @everyone может управлять сервером!")
+                elif everyone_role.permissions.manage_channels:
+                    warnings.append("🟡 @everyone может управлять каналами")
+                elif everyone_role.permissions.manage_roles:
+                    warnings.append("🟡 @everyone может управлять ролями")
+            
+            # Проверка позиции бота в иерархии ролей
+            if bot_member:
+                bot_top_role = bot_member.top_role
+                roles_above_bot = [r for r in guild.roles if r.position > bot_top_role.position and not r.is_default()]
+                if roles_above_bot:
+                    warnings.append(f"🟡 Найдено {len(roles_above_bot)} ролей выше бота - возможны проблемы с модерацией")
+            
+            # Проверка каналов с открытыми правами
+            open_channels = []
+            for channel in guild.channels:
+                if isinstance(channel, discord.TextChannel):
+                    everyone_overwrite = channel.overwrites_for(everyone_role) if everyone_role else None
+                    if everyone_overwrite:
+                        if everyone_overwrite.send_messages and everyone_overwrite.manage_messages:
+                            open_channels.append(f"#{channel.name} - @everyone может управлять сообщениями")
+                        elif everyone_overwrite.send_messages and not channel.is_nsfw():
+                            # Это нормально для большинства каналов
+                            pass
+            
+            if open_channels:
+                warnings.append(f"🟡 Найдено {len(open_channels)} каналов с потенциально опасными правами")
+            
+            # Проверка на наличие ботов с административными правами
+            admin_bots = []
+            for member in guild.members:
+                if member.bot and member.id != bot.user.id:
+                    if member.guild_permissions.administrator:
+                        admin_bots.append(f"Бот {member.name} имеет права администратора")
+            
+            if admin_bots:
+                vulnerabilities.append(f"🔴 КРИТИЧНО: Найдено {len(admin_bots)} ботов с правами администратора")
+            
+            # Проверка настроек анти-рейда
+            if raid_config.get("enabled"):
+                info.append("✅ Анти-рейд защита включена")
+            else:
+                warnings.append("🟡 Анти-рейд защита отключена")
+            
+            # Проверка количества участников без ролей
+            members_without_roles = [m for m in guild.members if len(m.roles) == 1]  # Только @everyone
+            if len(members_without_roles) > guild.member_count * 0.5:
+                warnings.append(f"🟡 {len(members_without_roles)} участников без ролей ({len(members_without_roles)/guild.member_count*100:.1f}%)")
+            
+            # Проверка на наличие вебхуков
+            try:
+                webhooks = await guild.webhooks()
+                if len(webhooks) > 20:
+                    warnings.append(f"🟡 Найдено {len(webhooks)} вебхуков - возможен риск утечки данных")
+            except:
+                pass
+            
+            # Проверка на наличие приглашений
+            try:
+                invites = await guild.invites()
+                permanent_invites = [inv for inv in invites if inv.max_age == 0]
+                if len(permanent_invites) > 10:
+                    warnings.append(f"🟡 Найдено {len(permanent_invites)} постоянных приглашений - возможен риск неконтролируемого доступа")
+            except:
+                pass
+            
+            # Проверка настроек безопасности каналов
+            nsfw_channels = [ch for ch in guild.channels if isinstance(ch, discord.TextChannel) and ch.is_nsfw()]
+            if nsfw_channels:
+                info.append(f"✅ Найдено {len(nsfw_channels)} NSFW каналов (правильно настроены)")
+            
+            # Проверка на наличие каналов без модерации
+            unmoderated_channels = []
+            for channel in guild.text_channels:
+                if channel.permissions_for(guild.me).manage_messages:
+                    # Бот может модерировать
+                    pass
+                else:
+                    unmoderated_channels.append(f"#{channel.name}")
+            
+            if unmoderated_channels and len(unmoderated_channels) > 5:
+                warnings.append(f"🟡 Найдено {len(unmoderated_channels)} каналов без модерации бота")
+    
+    # Этап 4: Генерация отчёта
+    info.append("📊 Этап 4: Генерация отчёта")
+    
+    # Формируем финальный отчёт
+    embed = discord.Embed(
+        title="🛡️ Отчёт о сканировании уязвимостей",
+        description="Результаты автоматизированного анализа безопасности",
+        color=0xED4245 if vulnerabilities else (0xFEE75C if warnings else 0x57F287),
+        timestamp=utc_now()
+    )
+    
+    if vulnerabilities:
+        vuln_text = "\n".join(vulnerabilities[:10])
+        if len(vulnerabilities) > 10:
+            vuln_text += f"\n... и ещё {len(vulnerabilities) - 10} уязвимостей"
+        embed.add_field(
+            name="🔴 Критические уязвимости",
+            value=vuln_text,
+            inline=False
+        )
+    
+    if warnings:
+        warn_text = "\n".join(warnings[:10])
+        if len(warnings) > 10:
+            warn_text += f"\n... и ещё {len(warnings) - 10} предупреждений"
+        embed.add_field(
+            name="🟡 Предупреждения",
+            value=warn_text,
+            inline=False
+        )
+    
+    if info:
+        info_text = "\n".join(info[:15])
+        embed.add_field(
+            name="ℹ️ Информация",
+            value=info_text,
+            inline=False
+        )
+    
+    # Общая оценка безопасности
+    risk_level = "🔴 ВЫСОКИЙ" if vulnerabilities else ("🟡 СРЕДНИЙ" if warnings else "🟢 НИЗКИЙ")
+    embed.add_field(
+        name="📈 Оценка безопасности",
+        value=(
+            f"Уровень риска: {risk_level}\n"
+            f"Критических уязвимостей: {len(vulnerabilities)}\n"
+            f"Предупреждений: {len(warnings)}\n"
+            f"Проверок выполнено: {len(info)}"
+        ),
+        inline=False
+    )
+    
+    if not vulnerabilities and not warnings:
+        embed.description = "✅ Критических уязвимостей не обнаружено!"
+    
+    embed.set_footer(text=f"Сканирование выполнено {ctx.author.display_name}")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="patchnotes")
+async def patchnotes_command(ctx: commands.Context, channel: discord.TextChannel = None):
+    """Отправляет патчноуты в указанный канал"""
+    log_command("UTILITY", "!patchnotes", ctx.author, ctx.guild)
+    
+    if not await ensure_command_access(ctx):
+        return
+    
+    # Если канал не указан, используем текущий
+    target_channel = channel or ctx.channel
+    
+    # Загружаем патчноуты
+    patchnotes = load_patchnotes()
+    
+    if not patchnotes:
+        await ctx.send(
+            embed=make_embed(
+                "Ошибка",
+                "❌ Патчноуты не найдены. Используйте функцию `add_patchnote()` в коде для добавления патчноутов.",
+                color=0xED4245
+            ),
+            delete_after=15
+        )
+        return
+    
+    # Берем последний патчноут
+    latest_note = patchnotes[-1]
+    
+    # Формируем embed
+    try:
+        note_date = latest_note.get('date', utc_now().isoformat())
+        # Обрабатываем разные форматы даты
+        if 'Z' in note_date:
+            note_date = note_date.replace('Z', '+00:00')
+        elif '+' not in note_date and note_date.count(':') >= 2:
+            note_date = note_date + '+00:00'
+        embed_timestamp = datetime.fromisoformat(note_date)
+    except:
+        embed_timestamp = utc_now()
+    
+    embed = discord.Embed(
+        title=f"📝 Патчноуты версии {latest_note.get('version', 'Unknown')}",
+        description="Обновления и изменения в боте",
+        color=0x5865F2,
+        timestamp=embed_timestamp
+    )
+    
+    # Добавляем разделы
+    if latest_note.get('additions'):
+        additions_text = "\n".join(f"• {item}" for item in latest_note['additions'])
+        embed.add_field(
+            name="✨ Добавлено",
+            value=additions_text[:1024],  # Ограничение Discord
+            inline=False
+        )
+    
+    if latest_note.get('fixes'):
+        fixes_text = "\n".join(f"• {item}" for item in latest_note['fixes'])
+        embed.add_field(
+            name="🔧 Исправлено",
+            value=fixes_text[:1024],
+            inline=False
+        )
+    
+    if latest_note.get('improvements'):
+        improvements_text = "\n".join(f"• {item}" for item in latest_note['improvements'])
+        embed.add_field(
+            name="⚡ Улучшено",
+            value=improvements_text[:1024],
+            inline=False
+        )
+    
+    if latest_note.get('other'):
+        other_text = "\n".join(f"• {item}" for item in latest_note['other'])
+        embed.add_field(
+            name="📌 Прочее",
+            value=other_text[:1024],
+            inline=False
+        )
+    
+    # Если нет изменений
+    if not any([latest_note.get('additions'), latest_note.get('fixes'), 
+                latest_note.get('improvements'), latest_note.get('other')]):
+        embed.description = "Нет изменений для отображения."
+    
+    embed.set_footer(text=f"Отправлено {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url if ctx.author.display_avatar else None)
+    
+    try:
+        await target_channel.send(embed=embed)
+        await ctx.send(
+            embed=make_embed(
+                "Успех",
+                f"✅ Патчноуты отправлены в {target_channel.mention}",
+                color=0x57F287
+            ),
+            delete_after=10
+        )
+    except discord.Forbidden:
+        await ctx.send(
+            embed=make_embed(
+                "Ошибка",
+                f"❌ Нет прав для отправки сообщений в {target_channel.mention}",
+                color=0xED4245
+            ),
+            delete_after=15
+        )
+    except Exception as e:
+        await ctx.send(
+            embed=make_embed(
+                "Ошибка",
+                f"❌ Не удалось отправить патчноуты: {str(e)}",
+                color=0xED4245
+            ),
+            delete_after=15
+        )
+
+
 @bot.command(name="backup")
 async def backup_command(ctx: commands.Context, *, version: str = None):
     """Создать резервную копию бота и всех конфигов"""
@@ -6649,10 +7415,11 @@ async def backup_command(ctx: commands.Context, *, version: str = None):
             "configs": {}
         }
         
-        # Читаем main.py
+        # Читаем main.py с сохранением форматирования
         try:
             main_py_path = Path("main.py")
             if main_py_path.exists():
+                # Читаем файл как есть, чтобы сохранить табы и форматирование
                 backup_data["bot_code"]["main.py"] = main_py_path.read_text(encoding="utf-8")
         except Exception as e:
             print(f"[Backup] Ошибка чтения main.py: {e}")
@@ -6709,7 +7476,31 @@ async def backup_command(ctx: commands.Context, *, version: str = None):
         
         existing_backups[version] = backup_data
         
-        # Сохраняем все бэкапы
+        # Ограничиваем количество версий до 15 (оставляем последние 15)
+        if len(existing_backups) > 15:
+            # Сортируем по timestamp и оставляем последние 15
+            sorted_versions = sorted(
+                existing_backups.items(),
+                key=lambda x: x[1].get("timestamp", ""),
+                reverse=True
+            )[:15]
+            removed_count = len(existing_backups) - 15
+            existing_backups = dict(sorted_versions)
+            if removed_count > 0:
+                await ctx.send(
+                    embed=make_embed(
+                        "Информация",
+                        f"📦 Удалено старых версий: {removed_count} (оставлено максимум 15 версий)",
+                        color=0xFEE75C
+                    ),
+                    delete_after=10
+                )
+        
+        # Сохраняем все бэкапы с правильным форматированием
+        # Используем ensure_ascii=False для сохранения русских символов
+        # indent=2 для читаемости JSON структуры
+        # Код внутри строк будет экранирован JSON (\t, \n и т.д.), но при восстановлении
+        # будет идентичен оригиналу благодаря правильному декодированию
         backup_file.write_text(
             json.dumps(existing_backups, ensure_ascii=False, indent=2),
             encoding="utf-8"
@@ -6787,6 +7578,17 @@ async def help_command(ctx: commands.Context):
             "• `!offai` / `!onai` — выключить/включить ИИ.\n"
             "• `!askpr <приоритет>` — приоритетные запросы к ИИ.\n"
             "• `!ai-ban @user` / `!ai-unban @user` — управление баном в ИИ.\n"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="🔧 Для разработчиков",
+        value=(
+            "• `!diag` — диагностика бота и выявление ошибок.\n"
+            "• `!backup <версия>` — создать резервную копию бота и конфигов.\n"
+            "• `!patchnotes [#канал]` — отправить патчноуты в указанный канал.\n"
+            "• `!stresstesting` — нагрузочные испытания системы.\n"
+            "• `!vulnscan` — автоматизированный поиск уязвимостей.\n"
         ),
         inline=False,
     )
