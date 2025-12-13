@@ -161,6 +161,7 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
 RANKCARDS_FILE = DATA_DIR / "rankcards.json"
 CUSTOM_ACHIEVEMENTS_FILE = DATA_DIR / "custom_achievements.json"
+ANTI_FLOOD_IGNORE_CHANNELS_FILE = DATA_DIR / "anti_flood_ignore_channels.json"
 MSK_TZ = timezone(timedelta(hours=3))
 TELEGRAM_BOT_TOKEN = "8235791338:AAGtsqzeV8phGsLu39WLpqgxXIK2rsqc0kc"
 TELEGRAM_CHAT_ID = 8165572851  # например, 123456789
@@ -184,6 +185,7 @@ ANTI_FLOOD_MESSAGE_LIMIT = 15
 ANTI_FLOOD_WINDOW_SECONDS = 60
 ANTI_FLOOD_MAX_WARNINGS = 3
 ANTI_FLOOD_MUTE_DURATION_SECONDS = 600
+ANTI_FLOOD_IGNORE_CHANNELS: set[int] = set()  # Каналы, где анти-флуд игнорируется
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -307,6 +309,10 @@ async def apply_auto_mute_for_spam(message: discord.Message):
 
 async def enforce_message_rate_limit(message: discord.Message):
     if not message.guild:
+        return
+    
+    # Игнорируем анти-флуд в указанных каналах
+    if message.channel.id in ANTI_FLOOD_IGNORE_CHANNELS:
         return
 
     now = utc_now()
@@ -855,6 +861,26 @@ def save_ai_priority(priority: str):
     ensure_storage()
     try:
         AI_PRIORITY_FILE.write_text(json.dumps(priority, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_anti_flood_ignore_channels() -> set[int]:
+    ensure_storage()
+    try:
+        if not ANTI_FLOOD_IGNORE_CHANNELS_FILE.exists():
+            ANTI_FLOOD_IGNORE_CHANNELS_FILE.write_text("[]", encoding="utf-8")
+            return set()
+        data = json.loads(ANTI_FLOOD_IGNORE_CHANNELS_FILE.read_text(encoding="utf-8"))
+        return {int(channel_id) for channel_id in data}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return set()
+
+
+def save_anti_flood_ignore_channels(channels: set[int]):
+    ensure_storage()
+    try:
+        ANTI_FLOOD_IGNORE_CHANNELS_FILE.write_text(json.dumps(list(channels), ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
         pass
 
@@ -1487,32 +1513,6 @@ def compute_cpu_gpu_usage() -> tuple[str, str]:
         except Exception:
             gpu_usage = "н/д"
     return cpu_usage, gpu_usage
-
-
-async def send_telegram_status_message():
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    uptime = "неизвестно"
-    if bot_start_time:
-        uptime = format_timedelta(utc_now() - bot_start_time)
-    cpu_usage, gpu_usage = compute_cpu_gpu_usage()
-    guilds = len(bot.guilds)
-    members = sum(g.member_count or 0 for g in bot.guilds)
-    latency_ms = int(bot.latency * 1000)
-    server_names = ", ".join(g.name for g in bot.guilds[:5]) or "нет серверов"
-    if len(bot.guilds) > 5:
-        server_names += f" (+{len(bot.guilds) - 5})"
-    text = (
-        "🤖 Статус Discord-бота\n"
-        f"Uptime: {uptime}\n"
-        f"Статус: {get_status_display_name()}\n"
-        f"Серверов: {guilds}\n"
-        f"Серверы: {server_names}\n"
-        f"Пользователей: {members}\n"
-        f"CPU: {cpu_usage} | GPU: {gpu_usage}\n"
-        f"Ping: {latency_ms} мс"
-    )
-    await send_telegram_message(TELEGRAM_CHAT_ID, text)
 
 
 async def send_telegram_message(chat_id: int, text: str):
@@ -2899,7 +2899,7 @@ async def update_presence():
         base_message = about_statuses[status_index]
         status_index += 1
 
-    message = base_message or "Мониторинг"
+    message = base_message or "бот работает"
     activity = discord.Activity(type=discord.ActivityType.watching, name=message)
     await bot.change_presence(status=get_discord_status(), activity=activity)
 
@@ -2914,14 +2914,6 @@ async def before_rotate_statuses():
     await bot.wait_until_ready()
 
 
-@tasks.loop(minutes=30)
-async def telegram_status_loop():
-    await send_telegram_status_message()
-
-
-@telegram_status_loop.before_loop
-async def before_telegram_status_loop():
-    await bot.wait_until_ready()
 
 
 @tasks.loop(minutes=1)
@@ -3481,8 +3473,6 @@ async def on_ready():
     if not console_listener_started:
         start_console_listener()
         console_listener_started = True
-    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID and not telegram_status_loop.is_running():
-        telegram_status_loop.start()
     cleanup_stale_voice_rooms()
     await ensure_voice_panels()
     await ensure_ticket_panel()
@@ -6632,6 +6622,123 @@ async def ticket_panel_command(ctx: commands.Context, channel: discord.TextChann
     await ctx.send(embed=make_embed("Панель тикетов", f"Панель развернута в {target.mention}"))
 
 
+@bot.command(name="backup")
+async def backup_command(ctx: commands.Context, *, version: str = None):
+    """Создать резервную копию бота и всех конфигов"""
+    log_command("UTILITY", "!backup", ctx.author, ctx.guild)
+    
+    if not await ensure_command_access(ctx):
+        return
+    
+    if not version:
+        await ctx.send(
+            embed=make_embed(
+                "Ошибка",
+                "Укажите версию бота: `!backup версия бота`\nПример: `!backup v1.2.3`",
+                color=0xED4245
+            ),
+            delete_after=15
+        )
+        return
+    
+    try:
+        backup_data = {
+            "version": version,
+            "timestamp": utc_now().isoformat(),
+            "bot_code": {},
+            "configs": {}
+        }
+        
+        # Читаем main.py
+        try:
+            main_py_path = Path("main.py")
+            if main_py_path.exists():
+                backup_data["bot_code"]["main.py"] = main_py_path.read_text(encoding="utf-8")
+        except Exception as e:
+            print(f"[Backup] Ошибка чтения main.py: {e}")
+        
+        # Читаем все конфиги из data/
+        config_files = [
+            ("res_whitelist.json", RES_WHITELIST_FILE),
+            ("moderation.json", MODERATION_FILE),
+            ("about_statuses.json", ABOUT_STATUS_FILE),
+            ("levels.json", LEVELS_FILE),
+            ("voice_rooms.json", VOICE_CONFIG_FILE),
+            ("tickets_config.json", TICKETS_CONFIG_FILE),
+            ("ticket_mutes.json", TICKET_MUTES_FILE),
+            ("voice_mutes.json", VOICE_MUTES_FILE),
+            ("raid_config.json", RAID_CONFIG_FILE),
+            ("mod_whitelist.json", MOD_WHITELIST_FILE),
+            ("command_whitelist.json", COMMAND_WHITELIST_FILE),
+            ("project_birthday_state.json", PROJECT_BIRTHDAY_STATE_FILE),
+            ("events.json", EVENTS_FILE),
+            ("event_managers.json", EVENT_MANAGERS_FILE),
+            ("super_admin.json", SUPER_ADMIN_FILE),
+            ("eternal_whitelist.json", ETERNAL_WHITELIST_FILE),
+            ("askpr_whitelist.json", ASKPR_WHITELIST_FILE),
+            ("ai_priority.json", AI_PRIORITY_FILE),
+            ("ai_blacklist.json", AI_BLACKLIST_FILE),
+            ("settings.json", SETTINGS_FILE),
+            ("achievements.json", ACHIEVEMENTS_FILE),
+            ("rankcards.json", RANKCARDS_FILE),
+            ("custom_achievements.json", CUSTOM_ACHIEVEMENTS_FILE),
+            ("anti_flood_ignore_channels.json", ANTI_FLOOD_IGNORE_CHANNELS_FILE),
+        ]
+        
+        for config_name, config_path in config_files:
+            try:
+                if config_path.exists():
+                    backup_data["configs"][config_name] = config_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"[Backup] Ошибка чтения {config_name}: {e}")
+        
+        # Сохраняем в backup.json
+        backup_file = Path("backup.json")
+        
+        # Загружаем существующие бэкапы, если есть
+        existing_backups = {}
+        if backup_file.exists():
+            try:
+                existing_backups = json.loads(backup_file.read_text(encoding="utf-8"))
+            except:
+                existing_backups = {}
+        
+        # Добавляем новый бэкап
+        if not isinstance(existing_backups, dict):
+            existing_backups = {}
+        
+        existing_backups[version] = backup_data
+        
+        # Сохраняем все бэкапы
+        backup_file.write_text(
+            json.dumps(existing_backups, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+        
+        files_count = len(backup_data["bot_code"]) + len(backup_data["configs"])
+        await ctx.send(
+            embed=make_embed(
+                "Резервная копия создана",
+                f"✅ Версия `{version}` успешно сохранена в `backup.json`\n"
+                f"📁 Сохранено файлов: {files_count}\n"
+                f"• Код бота: {len(backup_data['bot_code'])}\n"
+                f"• Конфиги: {len(backup_data['configs'])}",
+                color=0x57F287
+            )
+        )
+        
+    except Exception as e:
+        await ctx.send(
+            embed=make_embed(
+                "Ошибка",
+                f"❌ Не удалось создать резервную копию: {str(e)}",
+                color=0xED4245
+            ),
+            delete_after=15
+        )
+        print(f"[Backup] Ошибка: {e}")
+
+
 @bot.command(name="help")
 async def help_command(ctx: commands.Context):
     embed = discord.Embed(
@@ -6728,6 +6835,7 @@ autorole_ids = set(settings_data.get("autoroles", []))
 achievements_data = load_achievements()
 rankcards_data = load_rankcards()
 custom_achievements = load_custom_achievements()
+ANTI_FLOOD_IGNORE_CHANNELS = load_anti_flood_ignore_channels()
 
 
 # ==================== АЧИВКИ И БЕЙДЖИ ====================
