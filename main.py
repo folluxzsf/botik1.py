@@ -910,17 +910,29 @@ def save_patchnotes(patchnotes: list[dict]):
         pass
 
 
-def add_patchnote(version: str, additions: list[str] = None, fixes: list[str] = None, improvements: list[str] = None, other: list[str] = None):
+def add_patchnote(version: str, additions: list[str] | str = None, fixes: list[str] | str = None, improvements: list[str] | str = None, other: list[str] | str = None):
     """
     Добавляет новый патчноут
     
-    Пример использования:
+    Пример использования (со списками):
         add_patchnote(
             version="v1.2.3",
             additions=["Новая команда !diag", "Добавлена система бэкапов"],
-            fixes=["Исправлена ошибка с анти-флудом", "Исправлена проблема с голосовыми каналами"],
-            improvements=["Улучшена производительность", "Оптимизирована работа с базой данных"],
-            other=["Обновлены зависимости", "Улучшена документация"]
+            fixes=["Исправлена ошибка с анти-флудом"],
+            improvements=["Улучшена производительность"],
+            other=["Обновлены зависимости"]
+        )
+    
+    Пример использования (со строками через \\n):
+        add_patchnote(
+            version="v1.2.3",
+            additions=(
+                "Новая команда !diag\n"
+                "Добавлена система бэкапов"
+            ),
+            fixes="Исправлена ошибка с анти-флудом",
+            improvements="Улучшена производительность",
+            other="Обновлены зависимости"
         )
     """
     patchnotes = load_patchnotes()
@@ -928,10 +940,10 @@ def add_patchnote(version: str, additions: list[str] = None, fixes: list[str] = 
     new_note = {
         "version": version,
         "date": utc_now().isoformat(),
-        "additions": additions or [],
-        "fixes": fixes or [],
-        "improvements": improvements or [],
-        "other": other or []
+        "additions": additions if additions is not None else [],
+        "fixes": fixes if fixes is not None else [],
+        "improvements": improvements if improvements is not None else [],
+        "other": other if other is not None else []
     }
     
     patchnotes.append(new_note)
@@ -7328,37 +7340,67 @@ async def patchnotes_command(ctx: commands.Context, channel: discord.TextChannel
     )
     
     # Добавляем разделы
+    # Функция для обработки как списков, так и строк с \n
+    def process_items(items):
+        if not items:
+            return []
+        if isinstance(items, str):
+            # Если это строка с \n, разбиваем её
+            return [line.strip() for line in items.split('\n') if line.strip()]
+        elif isinstance(items, list):
+            # Если это список, обрабатываем каждый элемент
+            result = []
+            for item in items:
+                if isinstance(item, str):
+                    # Если элемент содержит \n, разбиваем его
+                    if '\n' in item:
+                        result.extend([line.strip() for line in item.split('\n') if line.strip()])
+                    else:
+                        result.append(item)
+                else:
+                    result.append(str(item))
+            return result
+        return []
+    
     if latest_note.get('additions'):
-        additions_text = "\n".join(f"• {item}" for item in latest_note['additions'])
-        embed.add_field(
-            name="✨ Добавлено",
-            value=additions_text[:1024],  # Ограничение Discord
-            inline=False
-        )
+        additions_list = process_items(latest_note['additions'])
+        if additions_list:
+            additions_text = "\n".join(f"• {item}" for item in additions_list)
+            embed.add_field(
+                name="✨ Добавлено",
+                value=additions_text[:1024],  # Ограничение Discord
+                inline=False
+            )
     
     if latest_note.get('fixes'):
-        fixes_text = "\n".join(f"• {item}" for item in latest_note['fixes'])
-        embed.add_field(
-            name="🔧 Исправлено",
-            value=fixes_text[:1024],
-            inline=False
-        )
+        fixes_list = process_items(latest_note['fixes'])
+        if fixes_list:
+            fixes_text = "\n".join(f"• {item}" for item in fixes_list)
+            embed.add_field(
+                name="🔧 Исправлено",
+                value=fixes_text[:1024],
+                inline=False
+            )
     
     if latest_note.get('improvements'):
-        improvements_text = "\n".join(f"• {item}" for item in latest_note['improvements'])
-        embed.add_field(
-            name="⚡ Улучшено",
-            value=improvements_text[:1024],
-            inline=False
-        )
+        improvements_list = process_items(latest_note['improvements'])
+        if improvements_list:
+            improvements_text = "\n".join(f"• {item}" for item in improvements_list)
+            embed.add_field(
+                name="⚡ Улучшено",
+                value=improvements_text[:1024],
+                inline=False
+            )
     
     if latest_note.get('other'):
-        other_text = "\n".join(f"• {item}" for item in latest_note['other'])
-        embed.add_field(
-            name="📌 Прочее",
-            value=other_text[:1024],
-            inline=False
-        )
+        other_list = process_items(latest_note['other'])
+        if other_list:
+            other_text = "\n".join(f"• {item}" for item in other_list)
+            embed.add_field(
+                name="📌 Прочее",
+                value=other_text[:1024],
+                inline=False
+            )
     
     # Если нет изменений
     if not any([latest_note.get('additions'), latest_note.get('fixes'), 
@@ -7668,30 +7710,30 @@ try:
     if latest_version != "v1.6.1":
         add_patchnote(
             version="v1.6.1",
-            additions=[
-                "Создана система пачноутов,бекапов и диагностики",
-                "Созданы команды !profile !rankcard !badges !achievments",
-                "Проверка нагрузки ресурсов(2%)",
-                "Автоматический поиск уязвимостей сервера/бота",
-                "Игнорирование анти-флуда для определённых каналов",
+            additions=(
+                "Создана система пачноутов,бекапов и диагностики\n"
+                "Созданы команды !profile !rankcard !badges !achievments\n"
+                "Проверка нагрузки ресурсов(2%)\n"
+                "Автоматический поиск уязвимостей сервера/бота\n"
+                "Игнорирование анти-флуда для определённых каналов\n"
                 "Улучшенная команда !help"
-            ],
-            fixes=[
-                "Исправлен баг со сбросом !leveltop",
-                "Исправлена работа команды !vulnscan",
+            ),
+            fixes=(
+                "Исправлен баг со сбросом !leveltop\n"
+                "Исправлена работа команды !vulnscan\n"
                 "Улучшена стабильность проверок безопасности сервера"
-            ],
-            improvements=[
-                "Улучшена структура команд в !help",
-                "Улучшена защита от рейдов",
-                "Добавлена проверка безопасности сервера Discord",
+            ),
+            improvements=(
+                "Улучшена структура команд в !help\n"
+                "Улучшена защита от рейдов\n"
+                "Добавлена проверка безопасности сервера Discord\n"
                 "Оптимизировано сохранение бэкапов с сохранением форматирования"
-            ],
-            other=[
-                "Создана отдельная ветка для разработчиков",
-                "Обновлена документация команд",
+            ),
+            other=(
+                "Создана отдельная ветка для разработчиков\n"
+                "Обновлена документация команд\n"
                 "Добавлены все недостающие команды в !help"
-            ]
+            )
         )
 except Exception as e:
     print(f"[Patchnotes] Ошибка создания патчноута: {e}")
@@ -7987,4 +8029,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
-
